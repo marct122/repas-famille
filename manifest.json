@@ -1,0 +1,16 @@
+{
+  "name": "Repas en famille",
+  "short_name": "Repas",
+  "description": "Qui soupe ce soir, qui a besoin d'un lunch demain et ce qu'on mange.",
+  "lang": "fr-CA",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f5fa",
+  "theme_color": "#2563eb",
+  "icons": [
+    {"src": "icone.svg", "sizes": "any", "type": "image/svg+xml"},
+    {"src": "icone-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icone-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

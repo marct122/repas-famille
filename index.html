@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Repas en famille</title>
+<meta name="description" content="Qui soupe ce soir, qui a besoin d'un lunch demain et ce qu'on mange.">
+<meta name="theme-color" content="#2563eb">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Repas">
+<script src="config.js"></script>
+<style>
+:root{
+  --bg:#f3f5fa;--card:#fff;--ink:#1d2433;--muted:#667085;--line:#e4e8f0;
+  --bleu:#2563eb;--bleu-bg:#e7efff;--rose:#db2777;--rose-bg:#fde7f1;
+  --ok:#15803d;--ok-bg:#dcfce7;--no:#dc2626;--no-bg:#fee2e2;--warn:#b45309;--warn-bg:#fef3c7;
+  --accent:#2563eb;--shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.07);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1420;--card:#1a2130;--ink:#e8ecf4;--muted:#9aa4b8;--line:#2a3345;
+  --bleu:#7aa7ff;--bleu-bg:#1c2b4a;--rose:#f472b6;--rose-bg:#3a1d2e;
+  --ok:#4ade80;--ok-bg:#16301f;--no:#f87171;--no-bg:#3a1c1c;--warn:#fbbf24;--warn-bg:#3a2d12;
+  --accent:#7aa7ff;--shadow:none;
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+#app{max-width:560px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top)) 16px 24px}
+button{font:inherit;color:inherit}
+.top{display:flex;align-items:flex-end;gap:8px;margin:6px 0 4px}
+.top h1{font-size:1.5rem;margin:0}
+.top .sub{color:var(--muted);font-size:.95rem}
+h2{font-size:1.15rem;margin:22px 0 4px}
+h3{font-size:1.02rem;margin:0 0 10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.card{background:var(--card);border-radius:16px;box-shadow:var(--shadow);border:1px solid var(--line);padding:14px;margin:12px 0}
+.card.todo{border:2px solid var(--warn)}
+.muted{color:var(--muted)}
+.small{font-size:.84rem;color:var(--muted)}
+.grow{flex:1}
+.tap{cursor:pointer}
+.who{display:inline-flex;align-items:center;gap:4px;font-weight:600;padding:2px 10px 2px 7px;border-radius:999px;white-space:nowrap;font-size:.95rem}
+.who.bleu{background:var(--bleu-bg);color:var(--bleu)}
+.who.rose{background:var(--rose-bg);color:var(--rose)}
+.who.invite{background:var(--warn-bg);color:var(--warn)}
+.row{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.list .row:first-child{border-top:0}
+.flags{flex-basis:100%;display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.pill{font-size:.78rem;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.pill.present{background:var(--ok-bg);color:var(--ok)}
+.pill.absent,.pill.auto{background:var(--no-bg);color:var(--no)}
+.pill.attente{background:var(--warn-bg);color:var(--warn)}
+.seg{display:flex;gap:6px}
+.seg button{flex:1;min-height:44px;border:1.5px solid var(--line);background:var(--card);border-radius:12px;font-weight:600;padding:6px 6px;cursor:pointer}
+.seg button:disabled{opacity:.5;cursor:default}
+.seg button.on{border-color:transparent}
+.seg .on.present,.seg .on.froid,.seg .on.chaud{background:var(--ok-bg);color:var(--ok)}
+.seg .on.absent{background:var(--no-bg);color:var(--no)}
+.seg .on.aucun{background:var(--line)}
+.seg.mini button{min-height:34px;font-size:.9rem;padding:2px 4px;border-radius:10px}
+.rep{padding:10px 0;border-top:1px solid var(--line)}
+.rep:first-of-type{border-top:0;padding-top:0}
+.rep-t{font-weight:700;margin-bottom:6px}
+.rep .small{margin-top:5px}
+.flag{font-size:.82rem;border-radius:8px;padding:3px 8px;display:inline-block}
+.flag.all{background:var(--no-bg);color:var(--no);font-weight:700}
+.flag.dis{background:var(--warn-bg);color:var(--warn)}
+.flag.ok{background:var(--ok-bg);color:var(--ok)}
+.late{color:var(--warn);font-weight:600}
+.meal{border-radius:12px;padding:11px 12px;background:var(--ok-bg);margin-bottom:10px}
+.meal.pending{background:var(--warn-bg);color:var(--warn)}
+.meal-t{font-weight:700;font-size:1.08rem}
+.count{margin:4px 0 2px}
+.lg{padding:8px 0;border-top:1px solid var(--line)}
+.lg:first-of-type{border-top:0;padding-top:0}
+.lg-t{font-weight:600;margin-bottom:5px}
+.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+.btn:disabled{opacity:.6}
+.btn.ghost{background:var(--bleu-bg);color:var(--bleu)}
+.btn.danger{background:var(--no-bg);color:var(--no)}
+.btn.ok{background:var(--ok-bg);color:var(--ok)}
+.btn.sm{min-height:34px;padding:4px 12px;font-size:.88rem;border-radius:10px}
+.btn.full{width:100%}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.card > .btn.ghost.sm{margin-top:8px}
+input[type=text],input[type=password],textarea{width:100%;font:inherit;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+label.f{display:block;font-weight:600;margin:12px 0 4px;font-size:.9rem}
+label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
+.hint{font-size:.8rem;color:var(--muted);margin-top:4px}
+.chips{display:flex;gap:6px;overflow-x:auto;margin:8px -16px 0;padding:2px 16px 8px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:6px 10px;text-align:center;cursor:pointer;line-height:1.2;font-size:.85rem}
+.chip b{display:block;font-size:1rem}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip .dot{display:block;font-size:.7rem;height:.9rem}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--bleu-bg);color:var(--bleu)}
+.tag.warn{background:var(--warn-bg);color:var(--warn)}
+.sugg{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+.sugg.chosen{border-color:var(--ok);background:var(--ok-bg)}
+.sugg .flag{margin-top:6px}
+.banner{border-radius:12px;padding:10px 12px;font-size:.9rem;margin:8px 0}
+.banner.warn{background:var(--warn-bg);color:var(--warn)}
+.banner.info{background:var(--bleu-bg);color:var(--bleu)}
+.banner.demo{background:var(--rose-bg);color:var(--rose)}
+.day-h{display:flex;align-items:center;gap:8px;font-weight:700}
+.mine{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin-top:10px;font-size:.88rem}
+.weeknav{display:flex;align-items:center;gap:8px;margin-top:8px}
+.weeknav .btn{min-width:44px}
+.pchip{display:inline-block;font-size:.82rem;padding:2px 9px;border-radius:999px;margin:2px 4px 2px 0}
+.pchip.dis{background:var(--warn-bg);color:var(--warn)}
+.pchip.all{background:var(--no-bg);color:var(--no);font-weight:700}
+.code{font-family:ui-monospace,Consolas,monospace;background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:8px 10px;word-break:break-all;font-size:.9rem;margin:6px 0}
+ol.steps{padding-left:20px;margin:8px 0}
+ol.steps li{margin:4px 0}
+nav#nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom);z-index:10}
+nav#nav[hidden]{display:none}
+nav#nav button{flex:1;max-width:112px;background:none;border:0;color:var(--muted);font-size:.72rem;padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer}
+nav#nav button span{font-size:1.35rem;line-height:1.2}
+nav#nav button.on{color:var(--accent);font-weight:700}
+.sheet{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet[hidden]{display:none}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.sheet-card{position:relative;background:var(--bg);width:100%;max-width:560px;max-height:90vh;overflow:auto;border-radius:20px 20px 0 0;padding:14px 16px calc(22px + env(safe-area-inset-bottom))}
+.sheet-h{display:flex;align-items:center;gap:8px;font-size:1.08rem;margin-bottom:6px}
+.sheet-h b{flex:1}
+.x{background:var(--card);border:1px solid var(--line);border-radius:999px;width:36px;height:36px;cursor:pointer}
+#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1d2433;color:#fff;padding:10px 16px;border-radius:12px;width:max-content;max-width:min(92vw,520px);z-index:30;opacity:0;pointer-events:none;transition:opacity .2s;font-size:.92rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+#toast.on{opacity:1}
+.login{text-align:center;padding-top:24px}
+.login h1{font-size:1.7rem;margin:6px 0}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:18px}
+.tile{border:0;border-radius:18px;padding:18px 8px;cursor:pointer;font-weight:700;font-size:1.05rem;display:flex;flex-direction:column;align-items:center;gap:6px}
+.tile .e{font-size:2.3rem}
+.tile.bleu{background:var(--bleu-bg);color:var(--bleu)}
+.tile.rose{background:var(--rose-bg);color:var(--rose)}
+.dots{display:flex;justify-content:center;gap:14px;margin:18px 0}
+.dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted)}
+.dots i.f{background:var(--ink);border-color:var(--ink)}
+.keypad{display:grid;grid-template-columns:repeat(3,76px);gap:12px;justify-content:center}
+.keypad button{height:64px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:1.5rem;cursor:pointer}
+.keypad button.v{visibility:hidden}
+.linkbtn{background:none;border:0;color:var(--accent);text-decoration:underline;cursor:pointer;margin-top:14px;font-size:.92rem}
+.center{text-align:center;padding:40px 0}
+</style>
+</head>
+<body>
+<div id="app"><div class="center muted">Chargement…</div></div>
+<nav id="nav" hidden>
+  <button data-a="tab" data-tab="auj"><span>🏠</span>Aujourd'hui</button>
+  <button data-a="tab" data-tab="sem"><span>📅</span>Semaine</button>
+  <button data-a="tab" data-tab="repas"><span>🍽️</span>Repas</button>
+  <button data-a="tab" data-tab="fam"><span>👪</span>Famille</button>
+  <button data-a="tab" data-tab="moi"><span>⚙️</span>Moi</button>
+</nav>
+<div id="sheet" class="sheet" hidden><div class="sheet-bg" data-a="close"></div><div class="sheet-card" id="sheet-card"></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+'use strict';
+/* =====================================================================
+   Repas en famille — application (une seule page)
+   Données : Supabase (voir supabase.sql) ou mode démo local.
+   ===================================================================== */
+const CFG = window.CONFIG || {};
+const DEMO = !(CFG.supabaseUrl && CFG.supabaseKey);
+const TZ = 'America/Toronto'; // fuseau du Québec
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} },
+  del(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+const liste = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+
+/* ---------- Dates (toujours à l'heure du Québec) ---------- */
+const _fp = new Intl.DateTimeFormat('en-CA', {timeZone:TZ, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
+function local(d){
+  const p = {};
+  for (const x of _fp.formatToParts(d ? new Date(d) : new Date())) p[x.type] = x.value;
+  return {date:`${p.year}-${p.month}-${p.day}`, h:+p.hour, min:+p.minute, stamp:`${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`};
+}
+const today = () => local().date;
+function addDays(iso, n){ const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0,10); }
+const _fl = new Intl.DateTimeFormat('fr-CA', {timeZone:'UTC', weekday:'long', day:'numeric', month:'long'});
+const _fs = new Intl.DateTimeFormat('fr-CA', {timeZone:'UTC', weekday:'short'});
+const jourLong = iso => _fl.format(new Date(iso + 'T12:00:00Z'));
+const jourAbr = iso => _fs.format(new Date(iso + 'T12:00:00Z')).replace('.', '');
+const jourNum = iso => +iso.slice(8,10);
+function heure(ts){ if (!ts) return ''; const l = local(ts); return `${l.h}h${String(l.min).padStart(2,'0')}`; }
+function relJour(iso){
+  const t = today();
+  if (iso === t) return "aujourd'hui";
+  if (iso === addDays(t,1)) return 'demain';
+  if (iso === addDays(t,-1)) return 'hier';
+  return jourLong(iso);
+}
+function quand(ts){ const l = local(ts); return `${relJour(l.date)} à ${heure(ts)}`; }
+
+/* ---------- Heure limite (11h) ---------- */
+const HL = () => (S.data && S.data.heure_limite) || 11;
+const hhmm = () => String(HL()).padStart(2,'0') + ':00';
+const limiteSouper = j => `${j} ${hhmm()}`;               // souper du jour J : J à 11h
+const limiteLunch  = j => `${addDays(j,-1)} ${hhmm()}`;   // lunch du jour J : la veille à 11h
+const estPasse = lim => local().stamp >= lim;
+const limTxt = lim => `${relJour(lim.slice(0,10))} ${HL()}h`;
+
+/* ---------- Profils : aliments et catégories pour les alertes ---------- */
+const MER_POISSONS = ['poisson','saumon','thon','morue','aiglefin','tilapia','truite','sole','sardine','maquereau','fletan','goberge','anchois','hareng','espadon','omble','basa','fish'];
+const MER_FRUITS = ['fruits de mer','crevette','homard','crabe','moule','petoncle','calmar','pieuvre','poulpe','huitre','palourde','langoustine','scampi','surimi'];
+const MER_PLATS = ['sushi','paella','bouillabaisse','chaudree','fish and chips'];
+const CATS = {
+  'tout ce qui vient de la mer': [...MER_POISSONS, ...MER_FRUITS, ...MER_PLATS],
+  'mer': [...MER_POISSONS, ...MER_FRUITS, ...MER_PLATS],
+  'fruits de mer': [...MER_FRUITS, 'paella', 'bouillabaisse', 'chaudree'],
+  'poisson': [...MER_POISSONS, 'sushi', 'fish and chips'],
+  'porc': ['porc','jambon','bacon','lardon','saucisse','chorizo','pepperoni','prosciutto','pancetta','salami','cote levee','cotes levees','ribs','pulled pork','cretons','tourtiere','carbonara','rillettes'],
+  'ragout': ['ragout','mijote','bourguignon','pot-au-feu','pot au feu','bouilli','goulash','blanquette','navarin','civet','cassoulet'],
+  'noix': ['noix','amande','noisette','pacane','cajou','pistache','pignon','pesto','nutella','praline','macadamia'],
+  'arachide': ['arachide','beurre d\'arachide','peanut','satay','pad thai'],
+  'gluten': ['gluten','ble','farine','pain','pates','spaghetti','lasagne','macaroni','pizza','couscous','orge','seigle','biscuit','chapelure','pane','tortilla','wrap','nouilles','gateau','croute','sous-marin','burger','hamburger'],
+  'lactose': ['lait','lactose','fromage','creme','beurre','yogourt','yaourt','mozzarella','parmesan','cheddar','feta','ricotta','gratin','poutine','alfredo','raclette'],
+  'oeuf': ['oeuf','omelette','mayonnaise','quiche','frittata','carbonara','meringue']
+};
+CATS['poissons'] = CATS['poisson']; CATS['ragouts'] = CATS['ragout']; CATS['arachides'] = CATS['arachide'];
+CATS['produits laitiers'] = CATS['lactose']; CATS['oeufs'] = CATS['oeuf'];
+const norm = s => String(s || '').toLowerCase().replace(/œ/g,'oe').replace(/æ/g,'ae').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[’`]/g,"'");
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function trouve(texte, terme){
+  const n = norm(terme).trim();
+  if (!n) return null;
+  for (const w0 of [...(CATS[n] || []), n]){
+    let w = w0;
+    if (w.length > 4 && /[sx]$/.test(w)) w = w.slice(0,-1); // pluriel
+    if (new RegExp('(^|[^a-z0-9])' + reEsc(w)).test(texte)) return w0;
+  }
+  return null;
+}
+function drapeaux(txt, p){
+  const t = norm(txt), r = {all:[], dis:[]};
+  for (const a of p.allergies || []){ const w = trouve(t, a); if (w) r.all.push(norm(a) === w ? a : `${a} : ${w}`); }
+  for (const a of p.naime_pas || []){ const w = trouve(t, a); if (w) r.dis.push(norm(a) === w ? a : `${a} : ${w}`); }
+  return r;
+}
+const texteRepas = s => `${s.titre} ${s.ingredients || ''}`;
+
+/* =====================================================================
+   Accès aux données
+   ===================================================================== */
+async function rpc(fn, args = {}){
+  try {
+    if (DEMO) { await null; return Demo.call(fn, args); }
+    const r = await fetch(`${CFG.supabaseUrl.replace(/\/$/,'')}/rest/v1/rpc/${fn}`, {
+      method:'POST', headers:{apikey:CFG.supabaseKey, 'Content-Type':'application/json'}, body:JSON.stringify(args)
+    });
+    const txt = await r.text();
+    let js = null; try { js = txt ? JSON.parse(txt) : null; } catch(e){}
+    if (!r.ok) throw new Error((js && (js.message || js.hint)) || txt || ('Erreur ' + r.status));
+    return js;
+  } catch(e){
+    if (/SESSION_INVALIDE/.test(e.message)) { deconnecterLocal(); throw new Error('Ta session a expiré. Reconnecte-toi.'); }
+    if (/Failed to fetch|NetworkError|Load failed/i.test(e.message)) throw new Error('Pas de connexion Internet.');
+    throw e;
+  }
+}
+async function act(fn, args, okMsg){
+  try {
+    await rpc(fn, {p_jeton:S.sess.jeton, ...args});
+    if (okMsg) toast(okMsg);
+    await refresh();
+    return true;
+  } catch(e){ toast('⚠️ ' + e.message, 5000); return false; }
+}
+
+/* ---------- Mode démo : mêmes fonctions que supabase.sql, stockées sur l'appareil ---------- */
+const SEED = [
+  {id:'marc',      prenom:'Marc',      emoji:'🧔',    couleur:'bleu', parent:true,  priorite:1, aime:'', naime_pas:[], allergies:[]},
+  {id:'nadine',    prenom:'Nadine',    emoji:'👩',    couleur:'rose', parent:true,  priorite:2, aime:'', naime_pas:['ragoût','porc'], allergies:[]},
+  {id:'aleck',     prenom:'Aleck',     emoji:'🧑',    couleur:'bleu', parent:false, priorite:0, aime:'', naime_pas:['tout ce qui vient de la mer'], allergies:[]},
+  {id:'william',   prenom:'William',   emoji:'👱',    couleur:'bleu', parent:false, priorite:0, aime:'', naime_pas:['jambon'], allergies:[]},
+  {id:'raphaelle', prenom:'Raphaelle', emoji:'👩‍🦰', couleur:'rose', parent:false, priorite:0, aime:'', naime_pas:[], allergies:[]}
+];
+const Demo = (() => {
+  const K = 'repas-demo-v1';
+  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], journal:[]});
+  let db = LS.get(K) || seed();
+  const save = () => LS.set(K, db);
+  const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const now = () => new Date().toISOString();
+  const err = m => { throw new Error(m); };
+  const M = id => db.membres.find(m => m.id === id);
+  const qui = j => { const m = M(db.sessions[j]); if (!m) err('SESSION_INVALIDE'); return m; };
+  const log = (par, membre, jour, texte) => { db.journal.unshift({id:uid(), quand:now(), par, membre, jour, texte}); db.journal.length = Math.min(db.journal.length, 300); };
+  const notifParents = (titre, msg) => setTimeout(() => toast(`📣 (démo) Notification envoyée aux parents — ${titre} : ${msg}`, 7000), 400);
+  const LIB = {souper:{present:'présent(e)', absent:'absent(e)'}, lunch:{aucun:'aucun', froid:'froid (école)', chaud:'chaud (maison)'}};
+  const prioDe = id => (M(id) || {priorite:0}).priorite;
+  function choisir(m, s){
+    if (!m.parent) err('Seuls Nadine et Marc peuvent choisir le repas officiel.');
+    const cur = db.suggestions.find(x => x.jour === s.jour && x.choisi);
+    if (cur && cur.id === s.id) return;
+    if (cur){
+      if (prioDe(cur.choisi_par) > m.priorite) err(`${M(cur.choisi_par).prenom} a déjà choisi le repas de ce jour; son choix a priorité.`);
+      cur.choisi = false; cur.choisi_par = null; cur.choisi_le = null;
+    }
+    s.choisi = true; s.choisi_par = m.id; s.choisi_le = now();
+    log(m.id, m.id, s.jour, `Repas choisi pour le souper du ${jourLong(s.jour)} : ${s.titre}`);
+  }
+  const F = {
+    list_membres: () => db.membres.map(m => ({id:m.id, prenom:m.prenom, emoji:m.emoji, couleur:m.couleur, parent:m.parent, a_nip:!!m.nip})),
+    connexion({p_membre, p_nip}){
+      if (!/^\d{4}$/.test(p_nip)) err('Le NIP doit contenir 4 chiffres.');
+      const m = M(p_membre); if (!m) err('Membre inconnu.');
+      if (!m.nip) m.nip = p_nip; else if (m.nip !== p_nip) return {erreur:'NIP incorrect.'};
+      const j = uid(); db.sessions[j] = m.id; return {jeton:j};
+    },
+    donnees({p_jeton, p_debut, p_fin}){
+      const m = qui(p_jeton);
+      const dans = x => x.jour >= p_debut && x.jour <= p_fin;
+      return {moi:m.id, heure_limite:11, heure_rappel:10, sujet_parents:m.parent ? 'repas-demo-parents' : null,
+        membres:db.membres.map(x => ({...x, nip:undefined, sujet_ntfy:x.id === m.id ? x.sujet_ntfy : null})),
+        presences:db.presences.filter(dans), invites:db.invites.filter(dans), suggestions:db.suggestions.filter(dans),
+        journal:db.journal.slice(0,40)};
+    },
+    enregistrer_presence({p_jeton, p_membre, p_jour, p_champ, p_valeur}){
+      const m = qui(p_jeton);
+      if (m.id !== p_membre && !m.parent) err('Tu ne peux modifier que ta propre présence.');
+      if (p_jour < today()) err('Cette journée est passée.');
+      if (!LIB[p_champ] || !LIB[p_champ][p_valeur]) err('Valeur invalide.');
+      let p = db.presences.find(x => x.jour === p_jour && x.membre === p_membre);
+      if (!p){ p = {jour:p_jour, membre:p_membre, souper:null, lunch:null}; db.presences.push(p); }
+      const ancien = p[p_champ];
+      if (ancien === p_valeur) return null;
+      p[p_champ] = p_valeur; p[p_champ + '_maj'] = now(); p[p_champ + '_par'] = m.id;
+      const txt = `${p_champ === 'souper' ? 'Souper' : 'Lunch'} du ${jourLong(p_jour)} : ${LIB[p_champ][p_valeur]}`;
+      log(m.id, p_membre, p_jour, txt);
+      if ((p_champ === 'souper' && ancien === 'present' && p_valeur === 'absent') ||
+          (p_champ === 'lunch' && (ancien === 'froid' || ancien === 'chaud') && p_valeur === 'aucun'))
+        notifParents(`❌ ${M(p_membre).prenom} annule`, `${txt} (à ${heure(now())})`);
+      return null;
+    },
+    enregistrer_invite({p_jeton, p_id, p_jour, p_nom, p_allergies, p_naime_pas}){
+      const m = qui(p_jeton);
+      if (!p_nom) err('Indique le nom de la personne invitée.');
+      if (p_jour < today()) err('Cette journée est passée.');
+      db.invites.push({id:uid(), jour:p_jour, nom:p_nom, allergies:p_allergies || [], naime_pas:p_naime_pas || [], invite_par:m.id, cree:now()});
+      log(m.id, m.id, p_jour, `Invité(e) au souper du ${jourLong(p_jour)} : ${p_nom}`);
+      return null;
+    },
+    supprimer_invite({p_jeton, p_id}){
+      const m = qui(p_jeton); const g = db.invites.find(x => x.id === p_id); if (!g) return null;
+      if (g.invite_par !== m.id && !m.parent) err('Seule la personne qui a invité ou un parent peut retirer cet invité.');
+      db.invites = db.invites.filter(x => x.id !== p_id);
+      log(m.id, g.invite_par, g.jour, `Invité(e) retiré(e) du souper du ${jourLong(g.jour)} : ${g.nom}`);
+      return null;
+    },
+    proposer_repas({p_jeton, p_jour, p_titre, p_ingredients, p_choisir}){
+      const m = qui(p_jeton);
+      if (!p_titre) err('Indique le nom du repas.');
+      if (p_jour < today()) err('Cette journée est passée.');
+      const s = {id:uid(), jour:p_jour, titre:p_titre, ingredients:p_ingredients || '', propose_par:m.id, cree:now(), choisi:false, choisi_par:null, choisi_le:null};
+      db.suggestions.push(s);
+      log(m.id, m.id, p_jour, `Suggestion pour le souper du ${jourLong(p_jour)} : ${p_titre}`);
+      if (p_choisir) choisir(m, s);
+      return s.id;
+    },
+    choisir_repas({p_jeton, p_id}){ const m = qui(p_jeton); const s = db.suggestions.find(x => x.id === p_id); if (!s) err('Suggestion introuvable.'); choisir(m, s); return null; },
+    retirer_choix({p_jeton, p_jour}){
+      const m = qui(p_jeton); if (!m.parent) err('Seuls Nadine et Marc peuvent changer le repas officiel.');
+      const cur = db.suggestions.find(x => x.jour === p_jour && x.choisi); if (!cur) return null;
+      if (prioDe(cur.choisi_par) > m.priorite) err(`Le choix de ${M(cur.choisi_par).prenom} a priorité.`);
+      cur.choisi = false; cur.choisi_par = null; cur.choisi_le = null;
+      log(m.id, m.id, p_jour, `Choix de repas retiré pour le ${jourLong(p_jour)} : ${cur.titre}`);
+      return null;
+    },
+    supprimer_suggestion({p_jeton, p_id}){
+      const m = qui(p_jeton); const s = db.suggestions.find(x => x.id === p_id); if (!s) return null;
+      if (s.propose_par !== m.id && !m.parent) err('Seule la personne qui a suggéré ou un parent peut supprimer.');
+      if (s.choisi && !m.parent) err('Ce repas est déjà choisi; seul un parent peut le retirer.');
+      if (s.choisi && prioDe(s.choisi_par) > m.priorite) err(`Le choix de ${M(s.choisi_par).prenom} a priorité.`);
+      db.suggestions = db.suggestions.filter(x => x.id !== p_id);
+      log(m.id, s.propose_par, s.jour, `Suggestion supprimée pour le ${jourLong(s.jour)} : ${s.titre}`);
+      return null;
+    },
+    enregistrer_profil({p_jeton, p_membre, p_emoji, p_aime, p_naime_pas, p_allergies}){
+      const m = qui(p_jeton); if (m.id !== p_membre && !m.parent) err('Tu ne peux modifier que ton propre profil.');
+      const c = M(p_membre); Object.assign(c, {emoji:p_emoji || c.emoji, aime:p_aime || '', naime_pas:p_naime_pas || [], allergies:p_allergies || []});
+      log(m.id, p_membre, null, `Profil de ${c.prenom} mis à jour`);
+      return null;
+    },
+    changer_nip({p_jeton, p_nouveau}){ const m = qui(p_jeton); if (!/^\d{4}$/.test(p_nouveau)) err('Le NIP doit contenir 4 chiffres.'); m.nip = p_nouveau; return null; },
+    reinitialiser_nip({p_jeton, p_membre}){
+      const m = qui(p_jeton); if (!m.parent) err('Seuls les parents peuvent réinitialiser un NIP.');
+      const c = M(p_membre); c.nip = null;
+      for (const k in db.sessions) if (db.sessions[k] === p_membre) delete db.sessions[k];
+      log(m.id, p_membre, null, `NIP de ${c.prenom} réinitialisé`);
+      return null;
+    },
+    deconnexion({p_jeton}){ delete db.sessions[p_jeton]; return null; }
+  };
+  return {
+    call(fn, args){ if (!F[fn]) err('Fonction inconnue : ' + fn); const r = F[fn](args || {}); save(); return r; },
+    reset(){ db = seed(); save(); }
+  };
+})();
+
+/* =====================================================================
+   État et aides
+   ===================================================================== */
+const S = {sess:LS.get('repas-session'), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null};
+const membre = id => S.data.membres.find(m => m.id === id);
+const prenom = id => (membre(id) || {}).prenom || id || '?';
+const moi = () => membre(S.data.moi);
+const peut = id => id === S.data.moi || moi().parent;
+const pres = (j, id) => S.data.presences.find(p => p.jour === j && p.membre === id);
+const invitesDu = j => S.data.invites.filter(g => g.jour === j).sort((a,b) => a.cree < b.cree ? -1 : 1);
+const suggDu = j => S.data.suggestions.filter(s => s.jour === j).sort((a,b) => a.cree < b.cree ? -1 : 1);
+const repasChoisi = j => S.data.suggestions.find(s => s.jour === j && s.choisi);
+
+function statutSouper(j, id){
+  const p = pres(j, id);
+  if (p && p.souper) return {v:p.souper, maj:p.souper_maj, par:p.souper_par, tard:local(p.souper_maj).stamp >= limiteSouper(j)};
+  return {v: estPasse(limiteSouper(j)) ? 'auto' : 'attente'};
+}
+function statutLunch(j, id){
+  const p = pres(j, id);
+  if (p && p.lunch) return {v:p.lunch, maj:p.lunch_maj, par:p.lunch_par, tard:local(p.lunch_maj).stamp >= limiteLunch(j)};
+  return {v: estPasse(limiteLunch(j)) ? 'auto' : 'attente'};
+}
+function convives(j){
+  const r = [];
+  for (const m of S.data.membres){ const v = statutSouper(j, m.id).v; if (v === 'present' || v === 'attente') r.push({label:m.prenom, allergies:m.allergies, naime_pas:m.naime_pas}); }
+  for (const g of invitesDu(j)) r.push({label:g.nom + ' (invité)', allergies:g.allergies, naime_pas:g.naime_pas});
+  return r;
+}
+
+/* ---------- Petits morceaux d'interface ---------- */
+const nomTag = m => m ? `<span class="who ${m.couleur}">${esc(m.emoji)} ${esc(m.prenom)}</span>` : '';
+function pill(v, m){
+  const e = m && m.couleur === 'rose' ? 'e' : '';
+  const t = {present:`Présent${e}`, absent:`Absent${e}`, attente:'En attente', auto:'Absent' + e + ' (sans réponse)'}[v];
+  return `<span class="pill ${v}">${t}</span>`;
+}
+const OPT_S = [['present','✅ Présent','✅'], ['absent','❌ Absent','❌']];
+const OPT_L = [['aucun','Aucun','—'], ['froid','🥪 Froid','🥪'], ['chaud','🍲 Chaud','🍲']];
+function seg(id, j, champ, val, ed = true, mini = false){
+  const o = champ === 'souper' ? OPT_S : OPT_L;
+  return `<div class="seg${mini ? ' mini' : ''}">${o.map(([v, l, lm]) =>
+    `<button type="button" class="${val === v ? 'on ' + v : ''}" ${ed ? `data-a="set" data-m="${id}" data-j="${j}" data-c="${champ}" data-v="${v}"` : 'disabled'} aria-pressed="${val === v}">${mini ? lm : l}</button>`).join('')}</div>`;
+}
+function infoStatut(st, champ, j, id){
+  if (st.maj) return `<div class="small">Répondu ${quand(st.maj)}${st.par && st.par !== id ? ` par ${esc(prenom(st.par))}` : ''}${st.tard ? ` <span class="late">⏰ après ${HL()}h</span>` : ''}</div>`;
+  if (st.v === 'auto') return `<div class="small late">Pas de réponse avant ${HL()}h → ${champ === 'souper' ? 'considéré(e) absent(e)' : 'pas de lunch'}</div>`;
+  return `<div class="small">Pas encore répondu · limite : ${limTxt(champ === 'souper' ? limiteSouper(j) : limiteLunch(j))}</div>`;
+}
+function blocReponse(id, j, champ, titre){
+  const st = champ === 'souper' ? statutSouper(j, id) : statutLunch(j, id);
+  return `<div class="rep"><div class="rep-t">${titre}</div>${seg(id, j, champ, st.v, j >= today())}${infoStatut(st, champ, j, id)}</div>`;
+}
+function htmlFlags(f){
+  return (f.all.length ? `<span class="flag all">⚠️ Allergie : ${esc(f.all.join(', '))}</span>` : '') +
+         (f.dis.length ? `<span class="flag dis">🚩 N'aimera peut-être pas : ${esc(f.dis.join(', '))}</span>` : '');
+}
+function resumeFlags(j, txt){
+  const all = [], dis = [];
+  for (const c of convives(j)){
+    const f = drapeaux(txt, c);
+    if (f.all.length) all.push(`${c.label} (${f.all.join(', ')})`);
+    if (f.dis.length) dis.push(`${c.label} (${f.dis.join(', ')})`);
+  }
+  if (!all.length && !dis.length) return `<span class="flag ok">👍 Aucun conflit connu avec les profils des personnes présentes</span>`;
+  return (all.length ? `<div><span class="flag all">⚠️ Allergie : ${esc(all.join(' · '))}</span></div>` : '') +
+         (dis.length ? `<div><span class="flag dis">🚩 Risque de ne pas aimer : ${esc(dis.join(' · '))}</span></div>` : '');
+}
+function enTete(titre, sous){
+  return `<div class="top"><h1>${titre}</h1><span class="grow"></span><button class="btn ghost sm" data-a="rafraichir" aria-label="Actualiser">↻</button></div>
+    ${sous ? `<div class="sub">${sous}</div>` : ''}
+    ${DEMO ? `<div class="banner demo">🧪 <b>Mode démo</b> — les données restent seulement sur cet appareil. Voir GUIDE.md pour la version familiale.</div>` : ''}`;
+}
+
+/* ---------- Cartes réutilisables ---------- */
+function carteSouper(j){
+  const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
+  const ordre = {present:0, attente:1, absent:2, auto:3};
+  const lignes = S.data.membres.map(m => ({m, st:statutSouper(j, m.id)})).sort((a,b) => ordre[a.st.v] - ordre[b.st.v]);
+  const nP = lignes.filter(x => x.st.v === 'present').length, nA = lignes.filter(x => x.st.v === 'attente').length;
+  const txt = r ? texteRepas(r) : '';
+  let repas;
+  if (r) repas = `<div class="meal"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}<div class="small">Suggéré par ${esc(prenom(r.propose_par))} · choisi par ${esc(prenom(r.choisi_par))}</div></div>`;
+  else if (sug.length) repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">🤔 <b>Repas à décider</b> — ${sug.length} suggestion${sug.length > 1 ? 's' : ''} : ${sug.map(s => esc(s.titre)).join(', ')} ›</div>`;
+  else repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">Aucun repas prévu — <b>suggérer un repas</b> ›</div>`;
+  return `<div class="card"><h3>🍽️ Souper · ${cap(relJour(j))}</h3>${repas}
+    <div class="count"><b>${nP + gs.length}</b> personne${nP + gs.length > 1 ? 's' : ''} au souper${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}${nA ? ` · <span class="late">${nA} en attente</span>` : ''}</div>
+    <div class="list">${lignes.map(x => ligneMembre(j, x.m, x.st, txt)).join('')}${gs.map(g => ligneInvite(j, g, txt)).join('')}</div>
+    ${j >= today() ? `<button class="btn ghost sm" data-a="invite" data-j="${j}">➕ Ajouter un invité</button>` : ''}
+  </div>`;
+}
+function ligneMembre(j, m, st, txt){
+  const ed = j >= today() && peut(m.id);
+  const f = txt && (st.v === 'present' || st.v === 'attente') ? drapeaux(txt, m) : null;
+  const icones = f ? (f.all.length ? ' ⚠️' : '') + (f.dis.length ? ' 🚩' : '') : '';
+  return `<div class="row${ed ? ' tap' : ''}" ${ed ? `data-a="person" data-m="${m.id}" data-j="${j}"` : ''}>
+    ${nomTag(m)}${icones}<span class="grow"></span>${st.tard ? `<span class="late small">⏰ ${heure(st.maj)}</span>` : ''}${pill(st.v, m)}
+    ${f && (f.all.length || f.dis.length) ? `<div class="flags">${htmlFlags(f)}</div>` : ''}</div>`;
+}
+function ligneInvite(j, g, txt){
+  const f = txt ? drapeaux(txt, g) : null;
+  const tard = local(g.cree).stamp >= limiteSouper(j);
+  const ed = j >= today() && (g.invite_par === S.data.moi || moi().parent);
+  const info = [g.allergies && g.allergies.length ? 'allergies : ' + g.allergies.join(', ') : '', g.naime_pas && g.naime_pas.length ? "n'aime pas : " + g.naime_pas.join(', ') : ''].filter(Boolean).join(' · ');
+  return `<div class="row"><span class="who invite">🎟️ ${esc(g.nom)}</span>${f && f.all.length ? ' ⚠️' : ''}${f && f.dis.length ? ' 🚩' : ''}
+    <span class="grow"></span>${ed ? `<button class="btn danger sm" data-a="del-invite" data-id="${g.id}">Retirer</button>` : ''}
+    <div class="flags"><span class="small">Invité(e) par <b>${esc(prenom(g.invite_par))}</b> · ajouté ${quand(g.cree)}${tard ? ` <span class="late">⏰ après ${HL()}h</span>` : ''}</span>
+    ${info ? `<span class="small">${esc(info)}</span>` : ''}${f ? htmlFlags(f) : ''}</div></div>`;
+}
+function carteLunch(j){
+  const gr = {froid:[], chaud:[], attente:[], aucun:[]};
+  for (const m of S.data.membres){ const st = statutLunch(j, m.id); gr[st.v === 'auto' ? 'aucun' : st.v].push({m, st}); }
+  const tagM = x => {
+    const ed = j >= today() && peut(x.m.id);
+    return `<span class="${ed ? 'tap' : ''}" ${ed ? `data-a="person" data-m="${x.m.id}" data-j="${j}"` : ''}>${nomTag(x.m)}${x.st.tard ? `<span class="late small"> ⏰ ${heure(x.st.maj)}</span>` : ''}${x.st.v === 'auto' ? '<span class="small"> (sans réponse)</span>' : ''}</span>`;
+  };
+  const grp = (lbl, a) => `<div class="lg"><div class="lg-t">${lbl} · <b>${a.length}</b></div><div class="tags">${a.length ? a.map(tagM).join('') : '<span class="small">personne</span>'}</div></div>`;
+  return `<div class="card"><h3>🥪 Lunchs · ${cap(relJour(j))}</h3>
+    ${grp("🥪 Froid (à l'école)", gr.froid)}${grp('🍲 Chaud (à la maison)', gr.chaud)}${gr.attente.length ? grp('⏳ En attente', gr.attente) : ''}${grp('Pas de lunch', gr.aucun)}
+    <div class="small" style="margin-top:6px">Limite pour répondre : ${limTxt(limiteLunch(j))}</div></div>`;
+}
+function ligneJournal(e){
+  const p = membre(e.par);
+  return `<div class="row"><div class="grow">${nomTag(p)}${e.membre && e.membre !== e.par ? ` <span class="small">pour ${esc(prenom(e.membre))}</span>` : ''}
+    <div>${esc(e.texte)}</div><div class="small">${cap(quand(e.quand))}</div></div></div>`;
+}
+const carteJournal = n => S.data.journal.length ? `<div class="card"><h3>🕘 Derniers changements</h3><div class="list">${S.data.journal.slice(0, n).map(ligneJournal).join('')}</div></div>` : '';
+
+/* =====================================================================
+   Onglets
+   ===================================================================== */
+function vueAujourdhui(){
+  const t = today(), dm = addDays(t,1), id = S.data.moi, l = local();
+  const aFaire = statutSouper(t, id).v === 'attente' || statutLunch(dm, id).v === 'attente';
+  const bandeau = l.h < HL()
+    ? `<div class="banner warn">⏳ Il reste <b>${Math.floor((HL()*60 - l.h*60 - l.min)/60)} h ${String((HL()*60 - l.h*60 - l.min) % 60).padStart(2,'0')}</b> pour répondre (souper de ce soir et lunch de demain). Limite : ${HL()}h.</div>`
+    : `<div class="banner info">🔒 Il est passé ${HL()}h : sans réponse, une personne est considérée absente au souper et sans lunch demain. Les changements restent possibles et sont horodatés.</div>`;
+  return `${enTete(`Bonjour ${esc(moi().prenom)} ${esc(moi().emoji)}`, cap(jourLong(t)))}${bandeau}
+    <div class="card${aFaire ? ' todo' : ''}"><h3>✋ Mes réponses${aFaire ? ' <span class="tag warn">À faire</span>' : ''}</h3>
+      ${blocReponse(id, t, 'souper', 'Souper ce soir')}
+      ${blocReponse(id, dm, 'lunch', 'Lunch de demain <span class="small">— froid = à l\'école · chaud = à la maison</span>')}
+      ${blocReponse(id, dm, 'souper', 'Souper de demain')}
+    </div>
+    <h2>Ce soir</h2>${carteSouper(t)}
+    <h2>Demain</h2>${carteLunch(dm)}${carteSouper(dm)}
+    ${carteJournal(8)}`;
+}
+function vueSemaine(){
+  const deb = addDays(today(), S.semaine * 7), jours = [...Array(7)].map((_, i) => addDays(deb, i)), id = S.data.moi;
+  return `${enTete('Semaine', 'Planifie tes soupers et tes lunchs à l\'avance.')}
+    <div class="weeknav"><button class="btn ghost sm" data-a="sem" data-d="-1" ${S.semaine ? '' : 'disabled'}>‹</button>
+      <b class="grow" style="text-align:center">${cap(jourLong(jours[0]))} → ${jourLong(jours[6])}</b>
+      <button class="btn ghost sm" data-a="sem" data-d="1">›</button></div>
+    ${jours.map(j => {
+      const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
+      let nP = 0, nA = 0, nF = 0, nC = 0;
+      for (const m of S.data.membres){
+        const s = statutSouper(j, m.id).v, lu = statutLunch(j, m.id).v;
+        if (s === 'present') nP++; if (s === 'attente') nA++; if (lu === 'froid') nF++; if (lu === 'chaud') nC++;
+      }
+      return `<div class="card">
+        <div class="day-h tap" data-a="day" data-j="${j}">${cap(jourLong(j))}${j === today() ? ' <span class="tag">Aujourd\'hui</span>' : ''}<span class="grow"></span><span class="muted">Détails ›</span></div>
+        <div class="small" style="margin-top:4px">🍽️ ${r ? `<b style="color:var(--ink)">${esc(r.titre)}</b>` : sug.length ? `${sug.length} suggestion${sug.length > 1 ? 's' : ''} — à décider` : 'Repas pas encore prévu'}</div>
+        <div class="small">👥 ${nP + gs.length} au souper${gs.length ? ` (dont ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}${nA ? ` · ${nA} en attente` : ''} · 🥪 ${nF} froid · 🍲 ${nC} chaud</div>
+        <div class="mine"><span>Mon souper</span>${seg(id, j, 'souper', statutSouper(j, id).v, true, true)}
+          <span>Mon lunch</span>${seg(id, j, 'lunch', statutLunch(j, id).v, true, true)}</div>
+      </div>`;
+    }).join('')}
+    <div class="small">Lunch : — aucun · 🥪 froid (à l'école) · 🍲 chaud (à la maison)</div>`;
+}
+function vueRepas(){
+  const t = today();
+  if (!S.repasJour || S.repasJour < t) S.repasJour = t;
+  const jours = [...Array(14)].map((_, i) => addDays(t, i)), j = S.repasJour, sug = suggDu(j), parent = moi().parent;
+  const conv = convives(j);
+  return `${enTete('Repas', 'Suggère un souper; Nadine ou Marc choisissent le repas officiel.')}
+    <div class="chips">${jours.map(x => `<button class="chip${x === j ? ' on' : ''}" data-a="repas-jour" data-j="${x}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : suggDu(x).length ? '💡' : ''}</span></button>`).join('')}</div>
+    <div class="card"><h3>🍽️ Souper · ${cap(jourLong(j))}</h3>
+      <div class="small">Présents ou en attente : ${conv.length ? esc(conv.map(c => c.label).join(', ')) : 'personne pour l\'instant'}</div>
+      ${sug.length ? sug.map(s => carteSugg(j, s, parent)).join('') : '<p class="muted">Aucune suggestion pour ce jour.</p>'}
+    </div>
+    <div class="card"><h3>💡 ${parent ? 'Ajouter un repas' : 'Suggérer un repas'}</h3>
+      <form data-f="sugg">
+        <label class="f" for="s-t">Repas</label><input type="text" id="s-t" name="titre" required maxlength="80" placeholder="Ex. : Tacos au poulet" autocomplete="off">
+        <label class="f" for="s-i">Ingrédients principaux</label><input type="text" id="s-i" name="ingredients" maxlength="200" placeholder="Ex. : poulet, tortillas, fromage, salsa" autocomplete="off">
+        <div class="hint">Les ingrédients servent aux alertes 🚩 et ⚠️ selon les profils.</div>
+        <div id="apercu" style="margin-top:8px"></div>
+        ${parent ? '<label class="chk"><input type="checkbox" name="choisir"> En faire directement le repas officiel</label>' : ''}
+        <button class="btn full" style="margin-top:10px">${parent ? 'Ajouter' : 'Suggérer'}</button>
+      </form></div>`;
+}
+function carteSugg(j, s, parent){
+  const cp = s.choisi ? membre(s.choisi_par) : null, m = moi();
+  const peutRetirer = parent && (!cp || cp.priorite <= m.priorite);
+  const boutons = [
+    parent && !s.choisi ? `<button class="btn ok sm" data-a="choisir" data-id="${s.id}">✅ Choisir ce repas</button>` : '',
+    s.choisi && peutRetirer ? `<button class="btn ghost sm" data-a="retirer-choix" data-j="${j}">Retirer le choix</button>` : '',
+    (s.propose_par === m.id && !s.choisi) || peutRetirer ? `<button class="btn danger sm" data-a="del-sugg" data-id="${s.id}">Supprimer</button>` : ''
+  ].join('');
+  return `<div class="sugg${s.choisi ? ' chosen' : ''}">
+    ${s.choisi ? '<span class="tag">✅ Repas officiel</span>' : ''}
+    <div class="meal-t">${esc(s.titre)}</div>${s.ingredients ? `<div class="small">${esc(s.ingredients)}</div>` : ''}
+    <div class="small">Suggéré par <b>${esc(prenom(s.propose_par))}</b> ${quand(s.cree)}${s.choisi ? ` · choisi par <b>${esc(prenom(s.choisi_par))}</b> ${quand(s.choisi_le)}` : ''}</div>
+    <div style="margin-top:6px">${resumeFlags(j, texteRepas(s))}</div>
+    ${boutons ? `<div class="actions">${boutons}</div>` : ''}</div>`;
+}
+function vueFamille(){
+  const m0 = moi();
+  const chipsL = (a, c) => a && a.length ? a.map(x => `<span class="pchip ${c}">${esc(x)}</span>`).join('') : '<span class="small">—</span>';
+  return `${enTete('Famille', 'Goûts, dégoûts et allergies de chacun.')}
+    ${S.data.membres.map(m => `<div class="card">
+      <div class="day-h">${nomTag(m)}${m.parent ? ' <span class="tag">Parent</span>' : ''}<span class="grow"></span>${peut(m.id) ? `<button class="btn ghost sm" data-a="profil" data-m="${m.id}">✏️ Modifier</button>` : ''}</div>
+      <div style="margin-top:8px"><b>Aime :</b> ${m.aime ? esc(m.aime) : '<span class="small">—</span>'}</div>
+      <div style="margin-top:4px"><b>N'aime pas :</b> ${chipsL(m.naime_pas, 'dis')}</div>
+      <div style="margin-top:4px"><b>Allergies :</b> ${chipsL(m.allergies, 'all')}</div>
+      ${m0.parent && m.id !== m0.id ? `<div class="actions"><button class="btn danger sm" data-a="reset-nip" data-m="${m.id}">🔑 Réinitialiser le NIP</button></div>` : ''}
+    </div>`).join('')}
+    <div class="card"><h3>ℹ️ Comment fonctionnent les alertes</h3>
+      <p class="small">🚩 = risque de ne pas aimer · ⚠️ = allergie. L'app compare le nom et les ingrédients du repas avec les profils des personnes présentes (et des invités).</p>
+      <p class="small">Certains mots couvrent une famille d'aliments : <b>tout ce qui vient de la mer</b>, <b>poisson</b>, <b>fruits de mer</b>, <b>porc</b> (jambon, bacon, saucisse…), <b>ragoût</b>, <b>noix</b>, <b>arachides</b>, <b>gluten</b>, <b>lactose</b>, <b>oeufs</b>. Pour le reste, écris simplement l'aliment (ex. : champignons).</p>
+    </div>`;
+}
+function vueMoi(){
+  const m = moi();
+  const sujet = t => `<div class="code">${esc(t)}</div><button class="btn ghost sm" data-a="copier" data-txt="${esc(t)}">📋 Copier</button>`;
+  return `${enTete(`${esc(m.emoji)} ${esc(m.prenom)}`, m.parent ? 'Parent' : '')}
+    <div class="card"><h3>🔔 Recevoir les notifications</h3>
+      <ol class="steps">
+        <li>Installe l'app gratuite <b>ntfy</b> (App Store ou Google Play).</li>
+        <li>Ouvre-la, touche <b>+</b> (« S'abonner à un sujet »), garde le serveur par défaut.</li>
+        <li>Colle ton sujet personnel ci-dessous. Tu recevras un rappel à ${S.data.heure_rappel || 10}h <b>seulement si tu n'as pas répondu</b>.</li>
+      </ol>
+      ${m.sujet_ntfy ? sujet(m.sujet_ntfy) : ''}
+      ${S.data.sujet_parents ? `<p style="margin-top:14px"><b>Parents :</b> abonnez-vous aussi à ce sujet pour être avisés quand quelqu'un annule sa présence :</p>${sujet(S.data.sujet_parents)}` : ''}
+      ${DEMO ? '<p class="small">En mode démo, les notifications apparaissent seulement à l\'écran.</p>' : ''}
+      <p class="small">Garde ces sujets pour toi : quiconque les connaît peut lire les notifications.</p>
+    </div>
+    <div class="card"><h3>📲 Mettre l'app sur l'écran d'accueil</h3>
+      <p class="small"><b>iPhone</b> (Safari) : bouton Partager → « Sur l'écran d'accueil ».<br><b>Android</b> (Chrome) : menu ⋮ → « Ajouter à l'écran d'accueil ».</p></div>
+    <div class="card"><h3>🔑 Mon NIP</h3>
+      <p class="small">Ce téléphone se souvient de toi : pas besoin de retaper ton NIP. En cas d'oubli, Nadine ou Marc peuvent le réinitialiser (onglet Famille).</p>
+      <div class="actions"><button class="btn ghost sm" data-a="nip">Changer mon NIP</button><button class="btn danger sm" data-a="logout">Se déconnecter</button></div></div>
+    ${S.data.journal.length ? `<div class="card"><h3>🕘 Historique des changements</h3><div class="list">${S.data.journal.map(ligneJournal).join('')}</div></div>` : ''}
+    ${DEMO ? '<div class="card"><button class="btn danger sm" data-a="demo-reset">Effacer les données de démo</button></div>' : ''}`;
+}
+const VUES = {auj:vueAujourdhui, sem:vueSemaine, repas:vueRepas, fam:vueFamille, moi:vueMoi};
+
+/* ---------- Feuilles (fenêtres du bas) ---------- */
+const FEUILLES = {
+  person({m, j}){
+    const p = membre(m);
+    return {titre:`${esc(p.emoji)} ${esc(p.prenom)} — ${esc(jourLong(j))}`,
+      corps:`<div class="card">${blocReponse(m, j, 'souper', 'Souper')}${blocReponse(m, j, 'lunch', 'Lunch <span class="small">— froid = à l\'école · chaud = à la maison</span>')}</div>
+      ${m !== S.data.moi ? '<p class="small">Tu modifies la réponse d\'une autre personne : le changement indiquera ton nom.</p>' : ''}`};
+  },
+  day({j}){
+    const id = S.data.moi;
+    return {titre:esc(cap(jourLong(j))),
+      corps:`${j >= today() ? `<div class="card"><h3>✋ Mes réponses</h3>${blocReponse(id, j, 'souper', 'Mon souper')}${blocReponse(id, j, 'lunch', 'Mon lunch')}</div>` : ''}${carteSouper(j)}${carteLunch(j)}`};
+  },
+  invite({j}){
+    return {titre:`🎟️ Invité au souper — ${esc(jourLong(j))}`, form:true,
+      corps:`<div class="card"><form data-f="invite" data-j="${j}">
+        <label class="f" for="i-n">Nom</label><input type="text" id="i-n" name="nom" required maxlength="40" placeholder="Ex. : la blonde d'Aleck">
+        <label class="f" for="i-a">Allergies (séparées par des virgules)</label><input type="text" id="i-a" name="allergies" maxlength="200" placeholder="Ex. : arachides">
+        <label class="f" for="i-d">N'aime pas</label><input type="text" id="i-d" name="naime_pas" maxlength="200" placeholder="Ex. : champignons, poisson">
+        <p class="small">Invité par : <b>${esc(moi().prenom)}</b></p>
+        <button class="btn full">Ajouter l'invité</button></form></div>`};
+  },
+  profil({m}){
+    const p = membre(m);
+    return {titre:`✏️ Profil de ${esc(p.prenom)}`, form:true,
+      corps:`<div class="card"><form data-f="profil" data-m="${m}">
+        <label class="f" for="p-e">Emoji</label><input type="text" id="p-e" name="emoji" maxlength="8" value="${esc(p.emoji)}">
+        <label class="f" for="p-a">Aime (goûts et préférences)</label><textarea id="p-a" name="aime" maxlength="300">${esc(p.aime)}</textarea>
+        <label class="f" for="p-d">N'aime pas (séparés par des virgules)</label><input type="text" id="p-d" name="naime_pas" maxlength="300" value="${esc((p.naime_pas || []).join(', '))}">
+        <div class="hint">Ex. : porc, champignons, tout ce qui vient de la mer</div>
+        <label class="f" for="p-l">Allergies (séparées par des virgules)</label><input type="text" id="p-l" name="allergies" maxlength="300" value="${esc((p.allergies || []).join(', '))}">
+        <button class="btn full" style="margin-top:14px">Enregistrer</button></form></div>`};
+  },
+  nip(){
+    return {titre:'🔑 Changer mon NIP', form:true,
+      corps:`<div class="card"><form data-f="nip">
+        <label class="f" for="n1">Nouveau NIP (4 chiffres)</label><input type="password" id="n1" name="n1" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="new-password">
+        <label class="f" for="n2">Confirmer</label><input type="password" id="n2" name="n2" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="new-password">
+        <button class="btn full" style="margin-top:14px">Enregistrer</button></form></div>`};
+  }
+};
+function ouvrir(type, args){ S.sheet = {type, ...args}; dessinerFeuille(); }
+function fermer(){ S.sheet = null; $('#sheet').hidden = true; $('#sheet-card').innerHTML = ''; }
+function dessinerFeuille(){
+  if (!S.sheet) return;
+  const f = FEUILLES[S.sheet.type](S.sheet);
+  $('#sheet-card').innerHTML = `<div class="sheet-h"><b>${f.titre}</b><button class="x" data-a="close" aria-label="Fermer">✕</button></div>${f.corps}`;
+  $('#sheet').hidden = false;
+}
+
+/* ---------- Rendu principal ---------- */
+function render(){
+  if (!S.sess || !S.data) return;
+  if (!VUES[S.tab]) S.tab = 'auj';
+  $('#app').innerHTML = VUES[S.tab]();
+  $('#nav').hidden = false;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+  if (S.sheet && !['invite','profil','nip'].includes(S.sheet.type)) dessinerFeuille();
+}
+async function refresh(){
+  const t = today();
+  S.data = await rpc('donnees', {p_jeton:S.sess.jeton, p_debut:addDays(t,-1), p_fin:addDays(t, Math.max(21, S.semaine*7 + 8))});
+  render();
+}
+function deconnecterLocal(){ S.sess = null; S.data = null; LS.del('repas-session'); fermer(); L.membres = null; L.choisi = null; renderLogin(); }
+
+/* ---------- Connexion (NIP) ---------- */
+const L = {membres:null, choisi:null, nip:'', etape:'nip', premier:''};
+async function renderLogin(){
+  $('#nav').hidden = true;
+  const app = $('#app');
+  if (!L.membres){
+    app.innerHTML = '<div class="center muted">Chargement…</div>';
+    try { L.membres = await rpc('list_membres'); }
+    catch(e){ app.innerHTML = `<div class="card">Impossible de joindre la base de données : ${esc(e.message)}<div class="actions"><button class="btn sm" data-a="relancer">Réessayer</button></div></div>`; return; }
+  }
+  if (!L.choisi){
+    app.innerHTML = `<div class="login"><div style="font-size:3rem">🍽️</div><h1>Repas en famille</h1><p class="muted">Qui es-tu ?</p>
+      ${DEMO ? '<div class="banner demo">🧪 Mode démo : choisis un NIP à 4 chiffres à ta première connexion.</div>' : ''}
+      <div class="tiles">${L.membres.map(m => `<button class="tile ${m.couleur}" data-a="login-m" data-m="${m.id}"><span class="e">${esc(m.emoji)}</span>${esc(m.prenom)}</button>`).join('')}</div></div>`;
+    return;
+  }
+  const m = L.choisi;
+  const msg = {nip:'Entre ton NIP', creer:'Première connexion : choisis ton NIP (4 chiffres)', confirmer:'Confirme ton nouveau NIP'}[L.etape];
+  const k = ['1','2','3','4','5','6','7','8','9','','0','del'];
+  app.innerHTML = `<div class="login"><div style="font-size:3rem">${esc(m.emoji)}</div><h1>${esc(m.prenom)}</h1><p class="muted">${msg}</p>
+    <div class="dots">${[0,1,2,3].map(i => `<i class="${i < L.nip.length ? 'f' : ''}"></i>`).join('')}</div>
+    <div class="keypad">${k.map(x => x === '' ? '<button class="v" tabindex="-1"></button>' : `<button data-a="pin" data-k="${x}" aria-label="${x === 'del' ? 'Effacer' : x}">${x === 'del' ? '⌫' : x}</button>`).join('')}</div>
+    <button class="linkbtn" data-a="oubli">NIP oublié ?</button><br><button class="linkbtn" data-a="login-back">← Ce n'est pas moi</button></div>`;
+}
+async function touchePin(k){
+  if (k === 'del'){ L.nip = L.nip.slice(0,-1); return renderLogin(); }
+  if (L.nip.length >= 4) return;
+  L.nip += k; renderLogin();
+  if (L.nip.length < 4) return;
+  if (L.etape === 'creer'){ L.premier = L.nip; L.nip = ''; L.etape = 'confirmer'; return setTimeout(renderLogin, 150); }
+  if (L.etape === 'confirmer' && L.nip !== L.premier){ toast('Les deux NIP ne correspondent pas. Recommence.'); L.nip = ''; L.etape = 'creer'; return setTimeout(renderLogin, 150); }
+  try {
+    const r = await rpc('connexion', {p_membre:L.choisi.id, p_nip:L.nip});
+    if (r && r.erreur){ toast('⚠️ ' + r.erreur, 4000); L.nip = ''; return renderLogin(); }
+    S.sess = {jeton:r.jeton, membre:L.choisi.id}; LS.set('repas-session', S.sess);
+    L.choisi = null; L.nip = '';
+    await refresh();
+  } catch(e){ toast('⚠️ ' + e.message, 5000); L.nip = ''; renderLogin(); }
+}
+
+/* ---------- Événements ---------- */
+let _tt;
+function toast(msg, ms = 2600){ const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(_tt); _tt = setTimeout(() => t.classList.remove('on'), ms); }
+async function copier(txt){
+  try { await navigator.clipboard.writeText(txt); toast('📋 Copié'); }
+  catch(e){ prompt('Copie ce texte :', txt); }
+}
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-a]'); if (!el) return;
+  const d = el.dataset;
+  switch (d.a){
+    case 'tab': S.tab = d.tab; LS.set('repas-onglet', S.tab); render(); scrollTo(0,0); break;
+    case 'close': fermer(); break;
+    case 'set': el.disabled = true; await act('enregistrer_presence', {p_membre:d.m, p_jour:d.j, p_champ:d.c, p_valeur:d.v}); el.disabled = false; break;
+    case 'person': ouvrir('person', {m:d.m, j:d.j}); break;
+    case 'day': ouvrir('day', {j:d.j}); break;
+    case 'invite': ouvrir('invite', {j:d.j}); break;
+    case 'del-invite': if (confirm('Retirer cet invité du souper ?')) await act('supprimer_invite', {p_id:d.id}, 'Invité retiré'); break;
+    case 'goto-repas': S.repasJour = d.j; S.tab = 'repas'; fermer(); render(); scrollTo(0,0); break;
+    case 'repas-jour': S.repasJour = d.j; render(); break;
+    case 'choisir': await act('choisir_repas', {p_id:d.id}, '✅ Repas officiel choisi'); break;
+    case 'retirer-choix': if (confirm('Retirer le repas officiel de ce jour ?')) await act('retirer_choix', {p_jour:d.j}, 'Choix retiré'); break;
+    case 'del-sugg': if (confirm('Supprimer cette suggestion ?')) await act('supprimer_suggestion', {p_id:d.id}, 'Suggestion supprimée'); break;
+    case 'sem': S.semaine = Math.max(0, S.semaine + (+d.d)); try { await refresh(); } catch(err){ toast('⚠️ ' + err.message); } break;
+    case 'profil': ouvrir('profil', {m:d.m}); break;
+    case 'reset-nip': if (confirm(`Réinitialiser le NIP de ${prenom(d.m)} ? Cette personne choisira un nouveau NIP à sa prochaine connexion.`)) await act('reinitialiser_nip', {p_membre:d.m}, '🔑 NIP réinitialisé'); break;
+    case 'nip': ouvrir('nip', {}); break;
+    case 'copier': copier(d.txt); break;
+    case 'rafraichir': try { await refresh(); toast('À jour ✓'); } catch(err){ toast('⚠️ ' + err.message); } break;
+    case 'logout': if (confirm('Se déconnecter de ce téléphone ?')){ rpc('deconnexion', {p_jeton:S.sess.jeton}).catch(() => {}); deconnecterLocal(); } break;
+    case 'demo-reset': if (confirm('Effacer toutes les données de démonstration ?')){ Demo.reset(); deconnecterLocal(); } break;
+    case 'login-m': L.choisi = L.membres.find(m => m.id === d.m); L.nip = ''; L.etape = L.choisi.a_nip ? 'nip' : 'creer'; renderLogin(); break;
+    case 'login-back': L.choisi = null; L.nip = ''; renderLogin(); break;
+    case 'pin': touchePin(d.k); break;
+    case 'oubli': toast('Demande à Nadine ou à Marc : onglet Famille → « Réinitialiser le NIP ». Tu pourras ensuite en choisir un nouveau.', 7000); break;
+    case 'relancer': L.membres = null; renderLogin(); break;
+  }
+});
+document.addEventListener('submit', async e => {
+  const f = e.target; if (!f.dataset.f) return;
+  e.preventDefault();
+  const v = Object.fromEntries(new FormData(f));
+  const btn = f.querySelector('button'); if (btn) btn.disabled = true;
+  let ok = false;
+  switch (f.dataset.f){
+    case 'sugg':
+      ok = await act('proposer_repas', {p_jour:S.repasJour, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas officiel ajouté' : '💡 Suggestion ajoutée');
+      break;
+    case 'invite':
+      ok = await act('enregistrer_invite', {p_id:null, p_jour:f.dataset.j, p_nom:v.nom.trim(), p_allergies:liste(v.allergies), p_naime_pas:liste(v.naime_pas)}, '🎟️ Invité ajouté');
+      if (ok) fermer(); break;
+    case 'profil':
+      ok = await act('enregistrer_profil', {p_membre:f.dataset.m, p_emoji:v.emoji.trim() || '🙂', p_aime:v.aime.trim(), p_naime_pas:liste(v.naime_pas), p_allergies:liste(v.allergies)}, 'Profil enregistré');
+      if (ok) fermer(); break;
+    case 'nip':
+      if (v.n1 !== v.n2){ toast('Les deux NIP ne correspondent pas.'); break; }
+      ok = await act('changer_nip', {p_nouveau:v.n1}, '🔑 NIP changé');
+      if (ok) fermer(); break;
+  }
+  if (btn && document.body.contains(btn)) btn.disabled = false;
+});
+document.addEventListener('input', e => {
+  const f = e.target.form;
+  if (!f || f.dataset.f !== 'sugg') return;
+  const txt = `${f.titre.value} ${f.ingredients.value}`.trim();
+  $('#apercu').innerHTML = txt ? resumeFlags(S.repasJour, txt) : '';
+});
+document.addEventListener('keydown', e => {
+  if (!S.sess && L.choisi){
+    if (/^[0-9]$/.test(e.key)) touchePin(e.key);
+    else if (e.key === 'Backspace') touchePin('del');
+  } else if (e.key === 'Escape' && S.sheet) fermer();
+});
+
+/* ---------- Mise à jour automatique ---------- */
+function occupe(){
+  const a = document.activeElement;
+  if (a && /INPUT|TEXTAREA/.test(a.tagName)) return true;
+  if (S.sheet && ['invite','profil','nip'].includes(S.sheet.type)) return true;
+  return [...document.querySelectorAll('#app input[type=text]')].some(i => i.value.trim());
+}
+setInterval(() => { if (S.sess && document.visibilityState === 'visible' && !occupe()) refresh().catch(() => {}); }, 60000);
+document.addEventListener('visibilitychange', () => { if (S.sess && document.visibilityState === 'visible' && !occupe()) refresh().catch(() => {}); });
+
+/* ---------- Démarrage ---------- */
+(async function init(){
+  if (!S.sess) return renderLogin();
+  try { await refresh(); }
+  catch(e){
+    if (!S.sess) return;
+    $('#app').innerHTML = `<div class="card">⚠️ ${esc(e.message)}<div class="actions"><button class="btn sm" data-a="rafraichir">Réessayer</button></div></div>`;
+  }
+})();
+</script>
+</body>
+</html>
