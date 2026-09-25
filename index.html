@@ -589,7 +589,7 @@ function vueRepas(){
       <div class="small">Présents ou en attente : ${conv.length ? esc(conv.map(c => c.label).join(', ')) : 'personne pour l\'instant'}</div>
       ${sug.length ? sug.map(s => carteSugg(j, s, parent)).join('') : '<p class="muted">Aucune suggestion pour ce jour.</p>'}
     </div>
-    <div class="card"><h3>💡 ${parent ? 'Ajouter un repas' : 'Suggérer un repas'}</h3>
+    <div class="card"><h3>💡 ${parent ? 'Faire une suggestion de repas' : 'Faire une suggestion de repas'}</h3>
       <form data-f="sugg">
         <label class="f" for="s-t">Repas</label><input type="text" id="s-t" name="titre" required maxlength="80" placeholder="Ex. : Tacos au poulet" autocomplete="off">
         <label class="f" for="s-i">Ingrédients principaux</label><input type="text" id="s-i" name="ingredients" maxlength="200" placeholder="Ex. : poulet, tortillas, fromage, salsa" autocomplete="off">
