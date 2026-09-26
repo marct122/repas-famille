@@ -413,23 +413,25 @@ end $$;
 
 create or replace function ajouter_membre(p_jeton uuid, p_prenom text, p_emoji text, p_couleur text, p_parent boolean)
 returns text language plpgsql security definer set search_path = public as $$
-declare m membres := _qui(p_jeton); nom text; id text;
+declare m membres := _qui(p_jeton); nom text; v_id text;
 begin
   if not m.parent then raise exception 'Seuls les parents peuvent ajouter un membre.'; end if;
-  nom := trim(p_prenom);
+  nom := trim(coalesce(p_prenom, ''));
   if nom = '' then raise exception 'Le prénom est obligatoire.'; end if;
   if p_couleur is null or p_couleur not in ('rose','bleu') then raise exception 'Couleur invalide.'; end if;
-  id := lower(regexp_replace(nom, '[^a-z0-9]+', '-', 'g'));
-  id := regexp_replace(id, '^-+|-+$', '', 'g');
-  if id = '' then id := 'membre'; end if;
-  if exists (select 1 from membres where id = id) then
-    id := id || '-' || floor(random() * 1000)::int::text;
-  end if;
+  -- identifiant : prénom en minuscules, sans accents (ex. « Océane » → « oceane »)
+  v_id := translate(lower(nom), 'àâäáãåçéèêëíìîïñóòôöõúùûüýÿœæ', 'aaaaaaceeeeiiiinooooouuuuyyoa');
+  v_id := regexp_replace(v_id, '[^a-z0-9]+', '-', 'g');
+  v_id := regexp_replace(v_id, '^-+|-+$', '', 'g');
+  if v_id = '' then v_id := 'membre'; end if;
+  while exists (select 1 from membres mb where mb.id = v_id) loop
+    v_id := regexp_replace(v_id, '-[0-9]+$', '') || '-' || floor(random() * 1000)::int::text;
+  end loop;
   insert into membres (id, prenom, emoji, couleur, parent, priorite, ordre, aime, naime_pas, allergies, sujet_ntfy)
-  values (id, nom, coalesce(nullif(trim(p_emoji), ''), '🙂'), p_couleur, coalesce(p_parent, false), 0,
+  values (v_id, nom, coalesce(nullif(trim(p_emoji), ''), '🙂'), p_couleur, coalesce(p_parent, false), 0,
           (select coalesce(max(ordre), 0) + 1 from membres), '', '{}', '{}', 'repas-' || replace(gen_random_uuid()::text, '-', ''));
-  insert into journal (par, membre, texte) values (m.id, id, 'Membre ajouté : ' || nom);
-  return id;
+  insert into journal (par, membre, texte) values (m.id, v_id, 'Membre ajouté : ' || nom);
+  return v_id;
 end $$;
 
 create or replace function supprimer_membre(p_jeton uuid, p_membre text) returns void
