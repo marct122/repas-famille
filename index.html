@@ -187,6 +187,7 @@ nav#nav button.on{color:var(--accent);font-weight:700}
    ===================================================================== */
 const CFG = window.CONFIG || {};
 const DEMO = !(CFG.supabaseUrl && CFG.supabaseKey);
+const CLE_SESSION = DEMO ? 'repas-session-demo' : 'repas-session';
 const TZ = 'America/Toronto'; // fuseau du Québec
 const $ = s => document.querySelector(s);
 const LS = {
@@ -310,7 +311,7 @@ async function rpc(fn, args = {}){
     if (!r.ok) throw new Error((js && (js.message || js.hint)) || txt || ('Erreur ' + r.status));
     return js;
   } catch(e){
-    if (/SESSION_INVALIDE/.test(e.message)) { deconnecterLocal(); throw new Error('Ta session a expiré. Reconnecte-toi.'); }
+    if (/SESSION_INVALIDE|invalid input syntax for type uuid/.test(e.message)) { deconnecterLocal(); throw new Error('Ta session a expiré. Reconnecte-toi.'); }
     if (/Failed to fetch|NetworkError|Load failed/i.test(e.message)) throw new Error('Pas de connexion Internet.');
     throw e;
   }
@@ -544,7 +545,7 @@ const Demo = (() => {
 /* =====================================================================
    État et aides
    ===================================================================== */
-const S = {sess:LS.get('repas-session'), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null};
+const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null};
 const membre = id => S.data.membres.find(m => m.id === id);
 const prenom = id => (membre(id) || {}).prenom || id || '?';
 const moi = () => membre(S.data.moi);
@@ -941,7 +942,7 @@ async function refresh(){
   S.data = await rpc('donnees', {p_jeton:S.sess.jeton, p_debut:addDays(t,-1), p_fin:addDays(t, Math.max(21, S.semaine*7 + 8))});
   render();
 }
-function deconnecterLocal(){ S.sess = null; S.data = null; LS.del('repas-session'); fermer(); L.membres = null; L.choisi = null; renderLogin(); }
+function deconnecterLocal(){ S.sess = null; S.data = null; LS.del(CLE_SESSION); fermer(); L.membres = null; L.choisi = null; renderLogin(); }
 
 /* ---------- Connexion (NIP) ---------- */
 const L = {membres:null, choisi:null, nip:'', etape:'nip', premier:''};
@@ -977,7 +978,7 @@ async function touchePin(k){
   try {
     const r = await rpc('connexion', {p_membre:L.choisi.id, p_nip:L.nip});
     if (r && r.erreur){ toast('⚠️ ' + r.erreur, 4000); L.nip = ''; return renderLogin(); }
-    S.sess = {jeton:r.jeton, membre:L.choisi.id}; LS.set('repas-session', S.sess);
+    S.sess = {jeton:r.jeton, membre:L.choisi.id}; LS.set(CLE_SESSION, S.sess);
     L.choisi = null; L.nip = '';
     await refresh();
   } catch(e){ toast('⚠️ ' + e.message, 5000); L.nip = ''; renderLogin(); }
