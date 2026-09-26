@@ -49,7 +49,7 @@ h3{font-size:1.02rem;margin:0 0 10px;display:flex;gap:6px;align-items:center;fle
 .row{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line);flex-wrap:wrap}
 .list .row:first-child{border-top:0}
 .flags{flex-basis:100%;display:flex;flex-direction:column;align-items:flex-start;gap:3px}
-.pill{font-size:.78rem;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.pill{font-size:.94rem;font-weight:700;padding:4px 11px;border-radius:999px;white-space:nowrap}
 .pill.present{background:var(--ok-bg);color:var(--ok)}
 .pill.absent,.pill.auto{background:var(--no-bg);color:var(--no)}
 .pill.attente{background:var(--warn-bg);color:var(--warn)}
@@ -60,12 +60,12 @@ h3{font-size:1.02rem;margin:0 0 10px;display:flex;gap:6px;align-items:center;fle
 .seg .on.present,.seg .on.froid,.seg .on.chaud{background:var(--ok-bg);color:var(--ok)}
 .seg .on.absent{background:var(--no-bg);color:var(--no)}
 .seg .on.aucun{background:var(--line)}
-.seg.mini button{min-height:34px;font-size:.9rem;padding:2px 4px;border-radius:10px}
+.seg.mini button{min-height:44px;font-size:.9rem;padding:2px 4px;border-radius:10px}
 .rep{padding:10px 0;border-top:1px solid var(--line)}
 .rep:first-of-type{border-top:0;padding-top:0}
 .rep-t{font-weight:700;margin-bottom:6px}
 .rep .small{margin-top:5px}
-.flag{font-size:.82rem;border-radius:8px;padding:3px 8px;display:inline-block}
+.flag{font-size:.9rem;border-radius:8px;padding:5px 9px;display:inline-block}
 .flag.all{background:var(--no-bg);color:var(--no);font-weight:700}
 .flag.dis{background:var(--warn-bg);color:var(--warn)}
 .flag.ok{background:var(--ok-bg);color:var(--ok)}
@@ -83,7 +83,7 @@ h3{font-size:1.02rem;margin:0 0 10px;display:flex;gap:6px;align-items:center;fle
 .btn.ghost{background:var(--bleu-bg);color:var(--bleu)}
 .btn.danger{background:var(--no-bg);color:var(--no)}
 .btn.ok{background:var(--ok-bg);color:var(--ok)}
-.btn.sm{min-height:34px;padding:4px 12px;font-size:.88rem;border-radius:10px}
+.btn.sm{min-height:44px;padding:6px 12px;font-size:.92rem;border-radius:10px}
 .btn.full{width:100%}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .card > .btn.ghost.sm{margin-top:8px}
@@ -112,6 +112,13 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .sugg{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
 .sugg.chosen{border-color:var(--ok);background:var(--ok-bg)}
 .sugg .flag{margin-top:6px}
+.card.done{border:1.5px solid var(--ok);background:var(--ok-bg)}
+.card.done .btn.ok{background:var(--ok);color:#fff}
+.hdr{font-weight:800;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.sub-h{font-weight:700;margin:4px 0 6px}
+.line{padding:4px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chev{color:var(--muted);font-weight:700}
+.sep{border-top:1px solid var(--line);margin:12px 0}
 .banner{border-radius:12px;padding:10px 12px;font-size:.9rem;margin:8px 0}
 .banner.warn{background:var(--warn-bg);color:var(--warn)}
 .banner.info{background:var(--bleu-bg);color:var(--bleu)}
@@ -169,7 +176,7 @@ nav#nav button.on{color:var(--accent);font-weight:700}
 <body>
 <div id="app"><div class="center muted">Chargement…</div></div>
 <nav id="nav" hidden>
-  <button data-a="tab" data-tab="auj"><span>🏠</span>Aujourd'hui</button>
+  <button data-a="tab" data-tab="auj"><span>🏠</span>Accueil</button>
   <button data-a="tab" data-tab="sem"><span>📅</span>Semaine</button>
   <button data-a="tab" data-tab="repas"><span>🍽️</span>Repas</button>
   <button data-a="tab" data-tab="fam"><span>👪</span>Famille</button>
@@ -293,10 +300,21 @@ function trouve(texte, terme){
 }
 function drapeaux(txt, p){
   const t = norm(txt), r = {all:[], dis:[]};
-  for (const a of p.allergies || []){ const w = trouve(t, a); if (w) r.all.push(norm(a) === w ? a : `${a} : ${w}`); }
-  for (const a of p.naime_pas || []){ const w = trouve(t, a); if (w) r.dis.push(norm(a) === w ? a : `${a} : ${w}`); }
+  for (const a of p.allergies || []){ const w = trouve(t, a); if (w) r.all.push({terme:a, mot:w}); }
+  for (const a of p.naime_pas || []){ const w = trouve(t, a); if (w) r.dis.push({terme:a, mot:w}); }
   return r;
 }
+
+/* Les alertes s'écrivent en phrases : « Nadine n'aime pas le porc — jambon dans le repas ».
+   Certains dégoûts contiennent déjà leur déterminant (« tout ce qui vient de la mer ») : on
+   n'en ajoute pas. */
+const DETERMINANT = /^(tout|tous|toute|toutes|le|la|les|l'|du|de|des|un|une|mon|ma|mes)\b/;
+const avecArticle = t => DETERMINANT.test(norm(t)) ? t : (/[sx]$/.test(t) && t.length > 3 ? `les ${t}` : `le ${t}`);
+// trouve() enleve le « s » du pluriel : « arachides » et « arachide » sont le meme mot.
+const racine = s => { const n = norm(s).trim(); return n.length > 4 && /[sx]$/.test(n) ? n.slice(0, -1) : n; };
+const dansLeRepas = x => racine(x.terme) === racine(x.mot) ? '' : ` — ${x.mot} dans le repas`;
+const phraseGout = (nom, x) => `🚩 ${nom} n'aime pas ${avecArticle(x.terme)}${dansLeRepas(x)}`;
+const phraseAllergie = (nom, x) => `⚠️ Allergie : ${nom} ne peut pas manger ${avecArticle(x.terme)}${dansLeRepas(x)}`;
 const texteRepas = s => `${s.titre} ${s.ingredients || ''}`;
 
 /* =====================================================================
@@ -558,7 +576,7 @@ const Demo = (() => {
 /* =====================================================================
    État et aides
    ===================================================================== */
-const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null};
+const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null, modif:false};
 const membre = id => S.data.membres.find(m => m.id === id);
 const prenom = id => (membre(id) || {}).prenom || id || '?';
 const moi = () => membre(S.data.moi);
@@ -602,7 +620,7 @@ function convives(j){
 const nomTag = m => m ? `<span class="who ${m.couleur}">${renderEmoji(m.emoji, m.prenom)} ${esc(m.prenom)}</span>` : '';
 function pill(v, m){
   const e = m && m.couleur === 'rose' ? 'e' : '';
-  const t = {present:`Présent${e}`, absent:`Absent${e}`, attente:'En attente', auto:'Absent' + e + ' (sans réponse)'}[v];
+  const t = {present:`Présent${e}`, absent:`Absent${e}`, attente:'Pas encore répondu', auto:`Absent${e} (pas de réponse)`}[v];
   return `<span class="pill ${v}">${t}</span>`;
 }
 const OPT_S = [['present','✅ Présent','✅'], ['absent','❌ Absent','❌']];
@@ -613,31 +631,31 @@ function seg(id, j, champ, val, ed = true, mini = false){
     `<button type="button" class="${val === v ? 'on ' + v : ''}" ${ed ? `data-a="set" data-m="${id}" data-j="${j}" data-c="${champ}" data-v="${v}"` : 'disabled'} aria-pressed="${val === v}">${mini ? lm : l}</button>`).join('')}</div>`;
 }
 function infoStatut(st, champ, j, id){
-  if (st.maj) return `<div class="small">Répondu ${quand(st.maj)}${st.par && st.par !== id ? ` par ${esc(prenom(st.par))}` : ''}${st.tard ? ` <span class="late">⏰ après ${HL()}h</span>` : ''}</div>`;
+  if (st.maj) return `<div class="small">Répondu ${quand(st.maj)}${st.par && st.par !== id ? ` par ${esc(prenom(st.par))}` : ''}${st.tard ? ` <span class="late">⏰ changement après ${HL()}h</span>` : ''}</div>`;
   if (st.v === 'auto') return `<div class="small late">Pas de réponse avant ${HL()}h → ${champ === 'souper' ? 'considéré(e) absent(e)' : 'pas de lunch'}</div>`;
-  return `<div class="small">Pas encore répondu · limite : ${limTxt(champ === 'souper' ? limiteSouper(j) : limiteLunch(j))}</div>`;
+  return `<div class="small">Pas encore répondu</div>`;
 }
 function blocReponse(id, j, champ, titre){
   const st = champ === 'souper' ? statutSouper(j, id) : statutLunch(j, id);
   return `<div class="rep"><div class="rep-t">${titre}</div>${seg(id, j, champ, st.v, j >= today())}${infoStatut(st, champ, j, id)}</div>`;
 }
-function htmlFlags(f){
-  return (f.all.length ? `<span class="flag all">⚠️ Allergie : ${esc(f.all.join(', '))}</span>` : '') +
-         (f.dis.length ? `<span class="flag dis">🚩 N'aimera peut-être pas : ${esc(f.dis.join(', '))}</span>` : '');
+function htmlFlags(f, nom){
+  return f.all.map(x => `<span class="flag all">${esc(phraseAllergie(nom, x))}</span>`).join('') +
+         f.dis.map(x => `<span class="flag dis">${esc(phraseGout(nom, x))}</span>`).join('');
 }
 function resumeFlags(j, txt){
   const all = [], dis = [];
   for (const c of convives(j)){
     const f = drapeaux(txt, c);
-    if (f.all.length) all.push(`${c.label} (${f.all.join(', ')})`);
-    if (f.dis.length) dis.push(`${c.label} (${f.dis.join(', ')})`);
+    for (const x of f.all) all.push(`<div><span class="flag all">${esc(phraseAllergie(c.label, x))}</span></div>`);
+    for (const x of f.dis) dis.push(`<div><span class="flag dis">${esc(phraseGout(c.label, x))}</span></div>`);
   }
-  if (!all.length && !dis.length) return `<span class="flag ok">👍 Aucun conflit connu avec les profils des personnes présentes</span>`;
-  return (all.length ? `<div><span class="flag all">⚠️ Allergie : ${esc(all.join(' · '))}</span></div>` : '') +
-         (dis.length ? `<div><span class="flag dis">🚩 Risque de ne pas aimer : ${esc(dis.join(' · '))}</span></div>` : '');
+  const out = [...all, ...dis];   // les allergies d'abord
+  if (!out.length) return `<span class="flag ok">👍 Personne n'a de problème connu avec ce repas</span>`;
+  return out.join('');
 }
 function enTete(titre, sous){
-  return `<div class="top"><h1>${titre}</h1><span class="grow"></span><button class="btn ghost sm" data-a="rafraichir" aria-label="Actualiser">↻</button></div>
+  return `<div class="top"><h1>${titre}</h1></div>
     ${sous ? `<div class="sub">${sous}</div>` : ''}
     ${DEMO ? `<div class="banner demo">🧪 <b>Mode démo</b> — les données restent seulement sur cet appareil. Voir GUIDE.md pour la version familiale.</div>` : ''}`;
 }
@@ -655,7 +673,7 @@ function carteSouper(j){
   else if (sug.length) repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">🤔 <b>Repas à décider</b> — ${sug.length} suggestion${sug.length > 1 ? 's' : ''} : ${sug.map(s => esc(s.titre)).join(', ')} ›</div>`;
   else repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">Aucun repas prévu — <b>suggérer un repas</b> ›</div>`;
   return `<div class="card"><h3>🍽️ Souper · ${cap(relJour(j))}</h3><div class="small dinner-time">${heure ? `🕒 Souper prévu à <b>${esc(heure)}</b>` : '🕒 Heure du souper pas encore fixée'}</div>${repas}
-    <div class="count"><b>${nP + gs.length}</b> personne${nP + gs.length > 1 ? 's' : ''} au souper${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}${nA ? ` · <span class="late">${nA} en attente</span>` : ''}</div>
+    <div class="count"><b>${nP + gs.length}</b> personne${nP + gs.length > 1 ? 's' : ''} au souper${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}${nA ? ` · <span class="late">${nA} pas encore répondu</span>` : ''}</div>
     <div class="list">${lignes.map(x => ligneMembre(j, x.m, x.st, txt)).join('')}${gs.map(g => ligneInvite(j, g, txt)).join('')}</div>
     ${j >= today() ? `<button class="btn ghost sm" data-a="invite" data-j="${j}">➕ Ajouter un invité</button>` : ''}
   </div>`;
@@ -665,12 +683,10 @@ function ligneMembre(j, m, st, txt){
   const f = txt && (st.v === 'present' || st.v === 'attente') ? drapeaux(txt, m) : null;
   const icones = f ? (f.all.length ? ' ⚠️' : '') + (f.dis.length ? ' 🚩' : '') : '';
   const maison = st.v === 'present' || st.v === 'attente' ? resumePresenceMaison(j, m.id) : {texte:'', alerte:''};
-  const edMaison = j >= today() && ['nadine','marc'].includes(S.data.moi);
   return `<div class="row${ed ? ' tap' : ''}" ${ed ? `data-a="person" data-m="${m.id}" data-j="${j}"` : ''}>
-    ${nomTag(m)}${icones}<span class="grow"></span>${st.tard ? `<span class="late small">⏰ ${heure(st.maj)}</span>` : ''}${pill(st.v, m)}
+    ${nomTag(m)}${icones}<span class="grow"></span>${st.tard ? `<span class="late small">⏰ ${heure(st.maj)}</span>` : ''}${pill(st.v, m)}${ed ? '<span class="chev">›</span>' : ''}
     ${maison.texte ? `<div class="flags home-range"><span class="small">🏠 ${esc(maison.texte)}</span>${maison.alerte ? `<span class="flag all">${maison.alerte}</span>` : ''}</div>` : ''}
-    ${edMaison ? `<button type="button" class="btn ghost sm home-edit" data-a="periode-maison" data-m="${m.id}" data-j="${j}" aria-label="Modifier la période à la maison de ${esc(m.prenom)}">🏠 Période maison</button>` : ''}
-    ${f && (f.all.length || f.dis.length) ? `<div class="flags">${htmlFlags(f)}</div>` : ''}</div>`;
+    ${f && (f.all.length || f.dis.length) ? `<div class="flags">${htmlFlags(f, m.prenom)}</div>` : ''}</div>`;
 }
 function ligneInvite(j, g, txt){
   const f = txt ? drapeaux(txt, g) : null;
@@ -680,7 +696,7 @@ function ligneInvite(j, g, txt){
   return `<div class="row"><span class="who invite">🎟️ ${esc(g.nom)}</span>${f && f.all.length ? ' ⚠️' : ''}${f && f.dis.length ? ' 🚩' : ''}
     <span class="grow"></span>${ed ? `<button class="btn danger sm" data-a="del-invite" data-id="${g.id}">Retirer</button>` : ''}
     <div class="flags"><span class="small">Invité(e) par <b>${esc(prenom(g.invite_par))}</b> · ajouté ${quand(g.cree)}${tard ? ` <span class="late">⏰ après ${HL()}h</span>` : ''}</span>
-    ${info ? `<span class="small">${esc(info)}</span>` : ''}${f ? htmlFlags(f) : ''}</div></div>`;
+    ${info ? `<span class="small">${esc(info)}</span>` : ''}${f ? htmlFlags(f, g.nom + ' (invité)') : ''}</div></div>`;
 }
 function carteLunch(j){
   const gr = {froid:[], chaud:[], attente:[], aucun:[]};
@@ -691,8 +707,8 @@ function carteLunch(j){
   };
   const grp = (lbl, a) => `<div class="lg"><div class="lg-t">${lbl} · <b>${a.length}</b></div><div class="tags">${a.length ? a.map(tagM).join('') : '<span class="small">personne</span>'}</div></div>`;
   return `<div class="card"><h3>🥪 Lunchs · ${cap(relJour(j))}</h3>
-    ${grp("🥪 Froid (à l'école)", gr.froid)}${grp('🍲 Chaud (à la maison)', gr.chaud)}${gr.attente.length ? grp('⏳ En attente', gr.attente) : ''}${grp('Pas de lunch', gr.aucun)}
-    <div class="small" style="margin-top:6px">Limite pour répondre : ${limTxt(limiteLunch(j))}</div></div>`;
+    ${grp("🥪 Froid (à l'école)", gr.froid)}${grp('🍲 Chaud (à la maison)', gr.chaud)}${gr.attente.length ? grp('⏳ Pas encore répondu', gr.attente) : ''}${grp('Pas de lunch', gr.aucun)}
+    <div class="small" style="margin-top:6px">Le lunch se décide la veille, avant ${HL()}h.</div></div>`;
 }
 function ligneJournal(e){
   const p = membre(e.par);
@@ -704,22 +720,128 @@ const carteJournal = n => S.data.journal.length ? `<div class="card"><h3>🕘 De
 /* =====================================================================
    Onglets
    ===================================================================== */
-function vueAujourdhui(){
-  const t = today(), dm = addDays(t,1), id = S.data.moi, l = local();
-  const aFaire = statutSouper(t, id).v === 'attente' || statutLunch(dm, id).v === 'attente';
-  const bandeau = l.h < HL()
-    ? `<div class="banner warn">⏳ Il reste <b>${Math.floor((HL()*60 - l.h*60 - l.min)/60)} h ${String((HL()*60 - l.h*60 - l.min) % 60).padStart(2,'0')}</b> pour répondre (souper de ce soir et lunch de demain). Limite : ${HL()}h.</div>`
-    : `<div class="banner info">🔒 Il est passé ${HL()}h : sans réponse, une personne est considérée absente au souper et sans lunch demain. Les changements restent possibles et sont horodatés.</div>`;
-  return `${enTete(`Bonjour ${esc(moi().prenom)} ${renderEmoji(moi().emoji, moi().prenom)}`, cap(jourLong(t)))}${bandeau}
-    <div class="card${aFaire ? ' todo' : ''}"><h3>✋ Mes réponses${aFaire ? ' <span class="tag warn">À faire</span>' : ''}</h3>
-      ${blocReponse(id, t, 'souper', 'Souper ce soir')}
-      ${boutonPeriodeMaison(id, t, 'Mes heures à la maison')}
-      ${blocReponse(id, dm, 'lunch', 'Lunch de demain <span class="small">— froid = à l\'école · chaud = à la maison</span>')}
-      ${blocReponse(id, dm, 'souper', 'Souper de demain')}
+/* =====================================================================
+   Page d'accueil (niveau B)
+   Principe : une seule zone pose les questions; le reste ne fait
+   qu'informer. Les cartes détaillées (carteSouper, carteLunch) restent
+   inchangées : la fenêtre « Détails » de l'onglet Semaine les réutilise.
+   ===================================================================== */
+
+/* Mots simples pour le résumé des réponses */
+function motSouper(v, m){
+  const e = m && m.couleur === 'rose' ? 'e' : '';
+  return v === 'present' ? `présent${e}` : `absent${e}`;
+}
+const motLunch = v => ({froid:"lunch froid (à l'école)", chaud:'lunch chaud (à la maison)'})[v] || 'pas de lunch';
+
+/* Une ligne verte quand les trois réponses ont vraiment été données */
+function carteRepondu(t, dm, id){
+  const m = membre(id);
+  const s1 = statutSouper(t, id).v, lu = statutLunch(dm, id).v, s2 = statutSouper(dm, id).v;
+  return `<div class="card done">
+    <h3>✅ Tes réponses sont enregistrées</h3>
+    <div>Ce soir : <b>${motSouper(s1, m)}</b> · Lunch demain : <b>${motLunch(lu)}</b> · Souper demain : <b>${motSouper(s2, m)}</b></div>
+    <div class="actions"><button type="button" class="btn ok" data-a="modifier-reponses">Modifier</button></div>
+  </div>`;
+}
+
+/* La zone des questions */
+function carteQuestions(t, dm, id, manque){
+  const titre = manque ? (local().h < HL() ? `À répondre avant ${HL()}h` : 'Il manque des réponses') : 'Mes réponses';
+  return `<div class="card${manque ? ' todo' : ''}">
+    <h3>✋ ${titre}</h3>
+    ${blocReponse(id, t, 'souper', 'Soupes-tu ce soir ?')}
+    ${blocReponse(id, dm, 'lunch', "Ton lunch demain ? <span class=\"small\">— 🥪 froid = à l'école · 🍲 chaud = à la maison</span>")}
+    ${blocReponse(id, dm, 'souper', 'Soupes-tu demain ?')}
+    <div class="actions"><button type="button" class="btn ghost" data-a="mes-heures">🏠 Mes heures à la maison <span class="chev">›</span></button></div>
+    ${manque ? '' : '<div class="actions"><button type="button" class="btn ghost sm" data-a="replier-reponses">✓ Terminé</button></div>'}
+  </div>`;
+}
+
+/* Les alertes du repas, en phrases */
+function phrasesAlertes(j, txt){
+  if (!txt) return '';
+  const all = [], dis = [];
+  for (const c of convives(j)){
+    const f = drapeaux(txt, c);
+    for (const x of f.all) all.push(`<span class="flag all">${esc(phraseAllergie(c.label, x))}</span>`);
+    for (const x of f.dis) dis.push(`<span class="flag dis">${esc(phraseGout(c.label, x))}</span>`);
+  }
+  const out = [...all, ...dis];   // les allergies d'abord
+  return out.length ? `<div class="flags">${out.join('')}</div>` : '';
+}
+
+/* Les heures à la maison qui tombent hors du souper, en phrases */
+function phrasesMaison(j){
+  const out = [];
+  for (const m of S.data.membres){
+    const v = statutSouper(j, m.id).v;
+    if (v !== 'present' && v !== 'attente') continue;
+    const r = resumePresenceMaison(j, m.id);
+    if (r.alerte) out.push(`<span class="flag all">⚠️ ${esc(m.prenom)} ${esc(r.alerte.replace('⚠️ ', ''))}</span>`);
+  }
+  return out.length ? `<div class="flags">${out.join('')}</div>` : '';
+}
+
+/* Le bloc des lunchs, en résumé */
+function resumeLunch(j){
+  const gr = {froid:[], chaud:[], attente:[], aucun:[]};
+  for (const m of S.data.membres){ const v = statutLunch(j, m.id).v; gr[v === 'auto' ? 'aucun' : v].push(m); }
+  const noms = a => a.map(m => nomTag(m)).join(' ');
+  const l = [];
+  if (gr.froid.length) l.push(`<div class="line">🥪 <b>À l'école (${gr.froid.length})</b> : ${noms(gr.froid)}</div>`);
+  if (gr.chaud.length) l.push(`<div class="line">🍲 <b>À la maison (${gr.chaud.length})</b> : ${noms(gr.chaud)}</div>`);
+  if (!gr.froid.length && !gr.chaud.length) l.push('<div class="line">Personne n\'a besoin de lunch.</div>');
+  else if (gr.aucun.length) l.push(`<div class="line small">Pas besoin de lunch : ${esc(gr.aucun.map(m => m.prenom).join(', '))}</div>`);
+  if (gr.attente.length) l.push(`<div class="line small late">⏳ Pas encore répondu : ${esc(gr.attente.map(m => m.prenom).join(', '))}</div>`);
+  return `<div class="sub-h">🥪 Lunchs</div>${l.join('')}`;
+}
+
+/* Une carte de jour, en résumé (ce soir / demain) */
+function carteJourAccueil(j, titre, avecLunch){
+  const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
+  const txt = r ? texteRepas(r) : '';
+  let repas;
+  if (r) repas = `<div class="meal"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}</div>`;
+  else if (sug.length) repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">🤔 <b>Repas à décider</b> — ${sug.length} suggestion${sug.length > 1 ? 's' : ''} <span class="chev">›</span></div>`;
+  else repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">🍽️ <b>Aucun repas prévu</b> — suggérer un repas <span class="chev">›</span></div>`;
+
+  const g = {present:[], attente:[], absent:[]};
+  for (const m of S.data.membres){ const v = statutSouper(j, m.id).v; g[v === 'auto' ? 'absent' : v].push(m); }
+  const nP = g.present.length, nT = nP + gs.length;
+  const lignes = [`<div class="count"><b>${nT}</b> à table${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}</div>`];
+  if (g.present.length) lignes.push(`<div class="line">✅ ${g.present.map(m => nomTag(m)).join(' ')}</div>`);
+  if (gs.length) lignes.push(`<div class="line">✅ ${gs.map(x => `<span class="who invite">🎟️ ${esc(x.nom)}</span>`).join(' ')}</div>`);
+  if (g.absent.length) lignes.push(`<div class="line">❌ ${g.absent.map(m => nomTag(m)).join(' ')}</div>`);
+  if (g.attente.length) lignes.push(`<div class="line small late">⏳ ${esc(g.attente.map(m => m.prenom).join(', '))} ${g.attente.length > 1 ? "n'ont" : "n'a"} pas encore répondu</div>`);
+
+  return `<div class="card">
+    <div class="hdr">${esc(titre)}</div>
+    ${avecLunch ? `${resumeLunch(j)}<div class="sep"></div><div class="sub-h">🍽️ Souper</div>` : ''}
+    ${repas}
+    ${champHeureSouper(j, heureSouper(j))}
+    ${lignes.join('')}
+    ${phrasesAlertes(j, txt)}
+    ${phrasesMaison(j)}
+    <div class="actions">
+      <button type="button" class="btn ghost sm" data-a="day" data-j="${j}">Voir les détails <span class="chev">›</span></button>
+      ${j >= today() ? `<button type="button" class="btn ghost sm" data-a="invite" data-j="${j}">➕ Un invité</button>` : ''}
     </div>
-    <h2>Ce soir</h2>${carteSouper(t)}
-    <h2>Demain</h2>${carteLunch(dm)}${carteSouper(dm)}
-    ${carteJournal(8)}`;
+  </div>`;
+}
+
+function vueAccueil(){
+  const t = today(), dm = addDays(t,1), id = S.data.moi, l = local();
+  // « Répondu » veut dire une vraie réponse (st.maj). Passé 11h, une absence
+  // de réponse devient « absent » d'office : ce n'est pas une réponse donnée.
+  const manque = !statutSouper(t, id).maj || !statutLunch(dm, id).maj || !statutSouper(dm, id).maj;
+  const bandeau = l.h < HL()
+    ? `<div class="banner warn">⏳ <b>Réponds avant ${HL()}h</b> : ton souper de ce soir et ton lunch de demain.</div>`
+    : `<div class="banner info">🕚 Il est passé ${HL()}h. Sans réponse, une personne est comptée absente au souper et sans lunch demain. Tu peux encore changer ta réponse : l'heure du changement sera notée.</div>`;
+  return `${enTete(`Bonjour ${esc(moi().prenom)} ${renderEmoji(moi().emoji, moi().prenom)}`, cap(jourLong(t)))}${bandeau}
+    ${manque || S.modif ? carteQuestions(t, dm, id, manque) : carteRepondu(t, dm, id)}
+    ${carteJourAccueil(t, 'Ce soir', false)}
+    ${carteJourAccueil(dm, 'Demain', true)}`;
 }
 function vueSemaine(){
   const deb = addDays(today(), S.semaine * 7), jours = [...Array(7)].map((_, i) => addDays(deb, i)), id = S.data.moi;
@@ -829,7 +951,7 @@ function vueMoi(){
     ${S.data.journal.length ? `<div class="card"><h3>🕘 Historique des changements</h3><div class="list">${S.data.journal.map(ligneJournal).join('')}</div></div>` : ''}
     ${DEMO ? '<div class="card"><button class="btn danger sm" data-a="demo-reset">Effacer les données de démo</button></div>' : ''}`;
 }
-const VUES = {auj:vueAujourdhui, sem:vueSemaine, repas:vueRepas, fam:vueFamille, moi:vueMoi};
+const VUES = {auj:vueAccueil, sem:vueSemaine, repas:vueRepas, fam:vueFamille, moi:vueMoi};
 
 function boutonPeriodeMaison(id, j, texte, periode = presenceMaison(j, id)){
   if (j < today() || !peutModifierMaison(id)) return '';
@@ -867,10 +989,18 @@ const FEUILLES = {
       </form></div>`};
   },
   person({m, j}){
-    const p = membre(m);
-    return {titre:`${renderEmoji(p.emoji, p.prenom)} ${esc(p.prenom)} — ${esc(jourLong(j))}`,
-      corps:`<div class="card">${blocReponse(m, j, 'souper', 'Souper')}${blocReponse(m, j, 'lunch', 'Lunch <span class="small">— froid = à l\'école · chaud = à la maison</span>')}</div>
-      ${m !== S.data.moi ? '<p class="small">Tu modifies la réponse d\'une autre personne : le changement indiquera ton nom.</p>' : ''}`};
+    const p = membre(m), t = today(), pm = presenceMaison(j, m) || {};
+    const moiMeme = m === S.data.moi;
+    // Le lunch du jour même se décidait la veille avant 11h : on ne le repose plus.
+    return {titre:`${renderEmoji(p.emoji, p.prenom)} ${esc(p.prenom)} — ${esc(jourLong(j))}`, form:true,
+      corps:`<div class="card">${blocReponse(m, j, 'souper', 'Souper')}${j > t ? blocReponse(m, j, 'lunch', "Lunch <span class='small'>— 🥪 froid = à l'école · 🍲 chaud = à la maison</span>") : ''}</div>
+      ${j >= t && peutModifierMaison(m) ? `<div class="card"><h3>🏠 ${moiMeme ? 'Mes heures à la maison' : `Les heures de ${esc(p.prenom)}`}</h3>
+        <form data-f="presence-maison" data-m="${esc(m)}" data-j="${esc(j)}">
+        <p class="small">De quelle heure à quelle heure ${moiMeme ? 'tu es' : 'cette personne est'} à la maison. Laisse vide ce que tu ne sais pas.</p>
+        ${champHeureMaison('Arrivée à la maison', 'arrivee', pm.arrivee || '')}
+        ${champHeureMaison('Départ de la maison', 'depart', pm.depart || '')}
+        <button class="btn full" style="margin-top:10px">Enregistrer les heures</button></form></div>` : ''}
+      ${!moiMeme ? '<p class="small">Tu modifies la réponse d\'une autre personne : le changement indiquera ton nom.</p>' : ''}`};
   },
   day({j}){
     const id = S.data.moi;
@@ -885,6 +1015,22 @@ const FEUILLES = {
         <label class="f" for="i-d">N'aime pas</label><input type="text" id="i-d" name="naime_pas" maxlength="200" placeholder="Ex. : champignons, poisson">
         <p class="small">Invité par : <b>${esc(moi().prenom)}</b></p>
         <button class="btn full">Ajouter l'invité</button></form></div>`};
+  },
+  // Un seul bouton pour ce soir ET demain (niveau B, point 4).
+  mes_heures(){
+    const id = S.data.moi, t = today(), dm = addDays(t, 1);
+    const p1 = presenceMaison(t, id) || {}, p2 = presenceMaison(dm, id) || {};
+    return {titre:'🏠 Mes heures à la maison', form:true,
+      corps:`<div class="card"><form data-f="mes-heures">
+        <p class="small">De quelle heure à quelle heure tu es à la maison. Laisse vide ce que tu ne sais pas.</p>
+        <div class="sub-h" style="margin-top:10px">${cap(jourLong(t))} (aujourd'hui)</div>
+        ${champHeureMaison('Arrivée à la maison', 'a1', p1.arrivee || '')}
+        ${champHeureMaison('Départ de la maison', 'd1', p1.depart || '')}
+        <div class="sub-h" style="margin-top:16px">${cap(jourLong(dm))} (demain)</div>
+        ${champHeureMaison('Arrivée à la maison', 'a2', p2.arrivee || '')}
+        ${champHeureMaison('Départ de la maison', 'd2', p2.depart || '')}
+        <button class="btn full" style="margin-top:14px">Enregistrer</button>
+      </form></div>`};
   },
   heure_souper({j}){
     if (!moi().parent) return {titre:`🕒 Heure du souper — ${esc(jourLong(j))}`,
@@ -955,7 +1101,7 @@ function render(){
   $('#app').innerHTML = VUES[S.tab]();
   $('#nav').hidden = false;
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-  if (S.sheet && !['invite','profil','nip'].includes(S.sheet.type)) dessinerFeuille();
+  if (S.sheet && !['invite','profil','nip','presence_maison','mes_heures'].includes(S.sheet.type)) dessinerFeuille();
 }
 async function refresh(){
   const t = today();
@@ -1028,11 +1174,14 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const d = el.dataset;
   switch (d.a){
-    case 'tab': S.tab = d.tab; LS.set('repas-onglet', S.tab); render(); scrollTo(0,0); break;
+    case 'tab': S.tab = d.tab; S.modif = false; LS.set('repas-onglet', S.tab); render(); scrollTo(0,0); break;
     case 'close': fermer(); break;
     case 'set': el.disabled = true; await act('enregistrer_presence', {p_membre:d.m, p_jour:d.j, p_champ:d.c, p_valeur:d.v}); el.disabled = false; break;
     case 'person': ouvrir('person', {m:d.m, j:d.j}); break;
     case 'periode-maison': ouvrir('presence_maison', {m:d.m, j:d.j}); break;
+    case 'mes-heures': ouvrir('mes_heures', {}); break;
+    case 'modifier-reponses': S.modif = true; render(); break;
+    case 'replier-reponses': S.modif = false; render(); break;
     case 'day': ouvrir('day', {j:d.j}); break;
     case 'invite': ouvrir('invite', {j:d.j}); break;
     case 'del-invite': if (confirm('Retirer cet invité du souper ?')) await act('supprimer_invite', {p_id:d.id}, 'Invité retiré'); break;
@@ -1087,6 +1236,18 @@ document.addEventListener('submit', async e => {
       if (ok) fermer();
       break;
     }
+    case 'mes-heures': {
+      const t = today(), dm = addDays(t, 1);
+      const hm = (h, m) => { h = String(h || ''); m = String(m || ''); if (!!h !== !!m) return null; return h ? `${h}:${m}` : ''; };
+      const a1 = hm(v.a1_h, v.a1_m), d1 = hm(v.d1_h, v.d1_m), a2 = hm(v.a2_h, v.a2_m), d2 = hm(v.d2_h, v.d2_m);
+      if ([a1, d1, a2, d2].includes(null)) { toast('Choisis une heure et des minutes, ou laisse les deux vides.'); break; }
+      if (a1 && d1 && a1 > d1) { toast("Aujourd'hui : l’arrivée doit être avant le départ."); break; }
+      if (a2 && d2 && a2 > d2) { toast("Demain : l’arrivée doit être avant le départ."); break; }
+      ok = await act('enregistrer_presence_maison', {p_membre:S.data.moi, p_jour:t, p_arrivee:a1, p_depart:d1});
+      if (ok) ok = await act('enregistrer_presence_maison', {p_membre:S.data.moi, p_jour:dm, p_arrivee:a2, p_depart:d2}, 'Heures à la maison enregistrées');
+      if (ok) fermer();
+      break;
+    }
     case 'invite':
       ok = await act('enregistrer_invite', {p_id:null, p_jour:f.dataset.j, p_nom:v.nom.trim(), p_allergies:liste(v.allergies), p_naime_pas:liste(v.naime_pas)}, '🎟️ Invité ajouté');
       if (ok) fermer(); break;
@@ -1120,8 +1281,8 @@ document.addEventListener('keydown', e => {
 /* ---------- Mise à jour automatique ---------- */
 function occupe(){
   const a = document.activeElement;
-  if (a && /INPUT|TEXTAREA/.test(a.tagName)) return true;
-  if (S.sheet && ['invite','profil','nip'].includes(S.sheet.type)) return true;
+  if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return true;
+  if (S.sheet && ['invite','profil','nip','presence_maison','mes_heures'].includes(S.sheet.type)) return true;
   return [...document.querySelectorAll('#app input[type=text]')].some(i => i.value.trim());
 }
 setInterval(() => { if (S.sess && document.visibilityState === 'visible' && !occupe()) refresh().catch(() => {}); }, 60000);
