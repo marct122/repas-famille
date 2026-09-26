@@ -459,6 +459,7 @@ const Demo = (() => {
     },
     enregistrer_heure_souper({p_jeton, p_jour, p_heure}){
       const m = qui(p_jeton);
+      if (!m.parent) err('Seuls les parents peuvent fixer l\'heure du souper.');
       if (p_jour < today()) err('Cette journée est passée.');
       const i = db.horaires_souper.findIndex(x => x.jour === p_jour);
       if (!String(p_heure || '').trim()) {
@@ -755,8 +756,11 @@ function vueRepas(){
   return `${enTete('Repas', 'Suggère un souper; Nadine ou Marc choisissent le repas officiel.')}
     <div class="chips">${jours.map(x => `<button class="chip${x === j ? ' on' : ''}" data-a="repas-jour" data-j="${x}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : suggDu(x).length ? '💡' : ''}</span></button>`).join('')}</div>
     <div class="card"><h3>🍽️ Souper · ${cap(jourLong(j))}</h3>
-      <label class="f" for="heure-souper">Heure du souper</label>
-      <div class="actions" style="margin-top:4px"><button type="button" id="heure-souper" class="time-display" data-a="ouvrir-heure" data-j="${j}" aria-label="Choisir l’heure du souper, format 24 heures"><span>${heure ? esc(heure) : 'HH:MM'}</span><span aria-hidden="true">🕒</span></button></div>
+      <label class="f">Heure du souper</label>
+      ${parent
+        ? `<div class="actions" style="margin-top:4px"><button type="button" id="heure-souper" class="time-display" data-a="ouvrir-heure" data-j="${j}" aria-label="Choisir l’heure du souper, format 24 heures"><span>${heure ? esc(heure) : 'HH:MM'}</span><span aria-hidden="true">🕒</span></button></div>`
+        : `<div style="margin-top:4px">${heure ? '🕒 <b>' + esc(heure) + '</b>' : '<span class="small">Pas encore fixée</span>'}</div>
+           <div class="hint">Seuls les parents peuvent fixer l'heure du souper.</div>`}
       <div class="small">Présents ou en attente : ${conv.length ? esc(conv.map(c => c.label).join(', ')) : 'personne pour l\'instant'}</div>
       ${sug.length ? sug.map(s => carteSugg(j, s, parent)).join('') : '<p class="muted">Aucune suggestion pour ce jour.</p>'}
     </div>
@@ -835,6 +839,12 @@ function boutonPeriodeMaison(id, j, texte, periode = presenceMaison(j, id)){
   return `<div class="week-home"><button type="button" class="btn ghost sm" data-a="periode-maison" data-m="${id}" data-j="${j}">${esc(texte)} · ${esc(resume)}</button></div>`;
 }
 
+// L'heure du souper : un bouton pour les parents, une simple ligne pour les autres.
+function champHeureSouper(j, h){
+  if (!moi().parent) return `<div class="dinner-time">${h ? `🕒 Souper prévu à <b>${esc(h)}</b>` : '<span class="small">🕒 Heure du souper pas encore fixée</span>'}</div>`;
+  return `<button type="button" class="btn ghost sm" data-a="ouvrir-heure" data-j="${j}">🕒 ${h ? `Souper prévu à <b>${esc(h)}</b>` : 'Fixer l\'heure du souper'} ›</button>`;
+}
+
 function champHeureMaison(label, name, value){
   const h = value ? value.slice(0,2) : '', min = value ? value.slice(3,5) : '';
   const heures = [...Array(24)].map((_, i) => String(i).padStart(2,'0'));
@@ -877,6 +887,8 @@ const FEUILLES = {
         <button class="btn full">Ajouter l'invité</button></form></div>`};
   },
   heure_souper({j}){
+    if (!moi().parent) return {titre:`🕒 Heure du souper — ${esc(jourLong(j))}`,
+      corps:`<div class="card"><p>Seuls les parents peuvent fixer l'heure du souper.</p></div>`};
     const actuelle = (S.data.horaires_souper || []).find(x => x.jour === j)?.heure || '18:00';
     const heures = [...Array(24)].map((_, i) => String(i).padStart(2,'0'));
     const minutes = [...Array(60)].map((_, i) => String(i).padStart(2,'0'));

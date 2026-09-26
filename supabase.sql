@@ -354,6 +354,7 @@ create or replace function enregistrer_heure_souper(p_jeton uuid, p_jour date, p
 language plpgsql security definer set search_path = public as $$
 declare m membres := _qui(p_jeton);
 begin
+  if not m.parent then raise exception 'Seuls les parents peuvent fixer l''heure du souper.'; end if;
   if p_jour < _aujourdhui() then raise exception 'Cette journée est passée.'; end if;
   if coalesce(trim(p_heure), '') = '' then
     delete from horaires_souper where jour = p_jour;
