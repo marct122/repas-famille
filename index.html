@@ -96,8 +96,6 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .emoji-option.on{border-color:var(--accent);background:var(--bleu-bg);transform:translateY(-1px)}
 .custom-emoji{display:inline-block;width:1.4em;height:1.4em;object-fit:cover;vertical-align:middle;border-radius:8px;background:#fff}
 .preview-emoji{display:flex;align-items:center;justify-content:center;min-height:52px;border:1.5px dashed var(--line);background:var(--bg);border-radius:12px;margin:8px 0 12px;font-size:1.8rem}
-.upload-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0}
-.upload-row input[type=file]{flex:1;min-width:160px}
 .time-display{width:120px;min-height:44px;max-width:100%;flex:0 0 120px;display:inline-flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-variant-numeric:tabular-nums;cursor:pointer}
 .time-select-row{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 0}
 .time-select-row label{width:110px}
@@ -199,6 +197,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 const liste = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
 const isCustomEmoji = v => /^data:image\//i.test(String(v || '')) || /^https?:\/\//i.test(String(v || ''));
+const emojiPermis = v => {
+  const t = String(v || '').trim();
+  return !!t && !/^(data:|http)/i.test(t) && [...t].length <= 16;
+};
 const renderEmoji = (v, alt = 'emoji') => {
   const value = String(v || '').trim();
   if (!value) return '🙂';
@@ -354,6 +356,8 @@ const Demo = (() => {
       const member = cur.membres.find(m => m.id === id);
       if (member) member.emoji = emoji;
     }
+    // Nettoyage : les photos et les adresses ne sont plus permises comme emoji.
+    for (const m of cur.membres) if (!emojiPermis(m.emoji)) m.emoji = '🙂';
     LS.set(K, cur);
     return cur;
   };
@@ -362,6 +366,14 @@ const Demo = (() => {
   const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const now = () => new Date().toISOString();
   const err = m => { throw new Error(m); };
+  // Meme regle que supabase.sql : pas de photo, pas d'adresse, 16 caracteres au plus.
+  const verifEmoji = v => {
+    const t = String(v || '').trim();
+    if (!t) return '';
+    if (/^(data:|http)/i.test(t)) err('Un emoji ne peut pas être une photo ni une adresse Internet. Choisis un emoji.');
+    if ([...t].length > 16) err('Cet emoji est trop long : 16 caractères au maximum.');
+    return t;
+  };
   const M = id => db.membres.find(m => m.id === id);
   const qui = j => { const m = M(db.sessions[j]); if (!m) err('SESSION_INVALIDE'); return m; };
   const log = (par, membre, jour, texte) => { db.journal.unshift({id:uid(), quand:now(), par, membre, jour, texte}); db.journal.length = Math.min(db.journal.length, 300); };
@@ -387,7 +399,7 @@ const Demo = (() => {
       const couleur = ['rose','bleu'].includes(String(p_couleur || '')) ? String(p_couleur) : 'rose';
       const baseId = prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'membre';
       let id = baseId; let n = 2; while (db.membres.some(x => x.id === id)) id = `${baseId}-${n++}`;
-      const perso = {id, prenom, emoji:String(p_emoji || '').trim() || '🙂', couleur, parent:!!p_parent, priorite:0, aime:'', naime_pas:[], allergies:[], nip:null, sujet_ntfy:'repas-demo-' + id};
+      const perso = {id, prenom, emoji:verifEmoji(p_emoji) || '🙂', couleur, parent:!!p_parent, priorite:0, aime:'', naime_pas:[], allergies:[], nip:null, sujet_ntfy:'repas-demo-' + id};
       db.membres.push(perso); db.membres.sort((a,b) => (a.prenom || '').localeCompare(b.prenom || ''));
       log(m.id, id, null, `Membre ajouté : ${prenom}`);
       return null;
@@ -522,7 +534,7 @@ const Demo = (() => {
     },
     enregistrer_profil({p_jeton, p_membre, p_emoji, p_aime, p_naime_pas, p_allergies}){
       const m = qui(p_jeton); if (m.id !== p_membre && !m.parent) err('Tu ne peux modifier que ton propre profil.');
-      const c = M(p_membre); Object.assign(c, {emoji:p_emoji || c.emoji, aime:p_aime || '', naime_pas:p_naime_pas || [], allergies:p_allergies || []});
+      const c = M(p_membre); Object.assign(c, {emoji:verifEmoji(p_emoji) || c.emoji, aime:p_aime || '', naime_pas:p_naime_pas || [], allergies:p_allergies || []});
       log(m.id, p_membre, null, `Profil de ${c.prenom} mis à jour`);
       return null;
     },
@@ -697,7 +709,7 @@ function vueAujourdhui(){
   const bandeau = l.h < HL()
     ? `<div class="banner warn">⏳ Il reste <b>${Math.floor((HL()*60 - l.h*60 - l.min)/60)} h ${String((HL()*60 - l.h*60 - l.min) % 60).padStart(2,'0')}</b> pour répondre (souper de ce soir et lunch de demain). Limite : ${HL()}h.</div>`
     : `<div class="banner info">🔒 Il est passé ${HL()}h : sans réponse, une personne est considérée absente au souper et sans lunch demain. Les changements restent possibles et sont horodatés.</div>`;
-  return `${enTete(`Bonjour ${esc(moi().prenom)} ${esc(moi().emoji)}`, cap(jourLong(t)))}${bandeau}
+  return `${enTete(`Bonjour ${esc(moi().prenom)} ${renderEmoji(moi().emoji, moi().prenom)}`, cap(jourLong(t)))}${bandeau}
     <div class="card${aFaire ? ' todo' : ''}"><h3>✋ Mes réponses${aFaire ? ' <span class="tag warn">À faire</span>' : ''}</h3>
       ${blocReponse(id, t, 'souper', 'Souper ce soir')}
       ${boutonPeriodeMaison(id, t, 'Mes heures à la maison')}
@@ -846,7 +858,7 @@ const FEUILLES = {
   },
   person({m, j}){
     const p = membre(m);
-    return {titre:`${esc(p.emoji)} ${esc(p.prenom)} — ${esc(jourLong(j))}`,
+    return {titre:`${renderEmoji(p.emoji, p.prenom)} ${esc(p.prenom)} — ${esc(jourLong(j))}`,
       corps:`<div class="card">${blocReponse(m, j, 'souper', 'Souper')}${blocReponse(m, j, 'lunch', 'Lunch <span class="small">— froid = à l\'école · chaud = à la maison</span>')}</div>
       ${m !== S.data.moi ? '<p class="small">Tu modifies la réponse d\'une autre personne : le changement indiquera ton nom.</p>' : ''}`};
   },
@@ -881,17 +893,13 @@ const FEUILLES = {
   profil({m}){
     const p = membre(m);
     const emojiGrid = EMOJI_CHOICES.map(e => `<button type="button" class="emoji-option ${e === p.emoji ? 'on' : ''}" data-emoji-value="${esc(e)}" aria-label="Choisir l'emoji ${e}">${e}</button>`).join('');
-    const preview = isCustomEmoji(p.emoji) ? `<img class="custom-emoji" src="${p.emoji}" alt="emoji">` : p.emoji || '🙂';
     return {titre:`✏️ Profil de ${esc(p.prenom)}`, form:true,
       corps:`<div class="card"><form data-f="profil" data-m="${m}">
         <label class="f" for="p-e">Emoji</label>
         <div class="preview-emoji" id="p-e-preview">${renderEmoji(p.emoji, p.prenom)}</div>
         <div class="emoji-grid">${emojiGrid}</div>
-        <div class="upload-row">
-          <input type="file" id="p-e-upload" accept="image/*" aria-label="Téléverser son propre emoji">
-        </div>
-        <input type="text" id="p-e" name="emoji" maxlength="500" value="${esc(p.emoji)}" placeholder="Ex. : 👩🏽‍🦰 ou un fichier image">
-        <div class="hint">Sélectionne un emoji proposé, écris-en un autre ou téléverse une image pour ton propre emoji.</div>
+        <input type="text" id="p-e" name="emoji" maxlength="16" value="${esc(p.emoji)}" placeholder="Ex. : 👩🏽‍🦰">
+        <div class="hint">Touche un emoji ci-dessus, ou écris-en un autre. Les photos et les images ne sont pas permises.</div>
         <label class="f" for="p-a">Aime (goûts et préférences)</label><textarea id="p-a" name="aime" maxlength="300">${esc(p.aime)}</textarea>
         <label class="f" for="p-d">N'aime pas (séparés par des virgules)</label><input type="text" id="p-d" name="naime_pas" maxlength="300" value="${esc((p.naime_pas || []).join(', '))}">
         <div class="hint">Ex. : porc, champignons, tout ce qui vient de la mer</div>
@@ -902,7 +910,7 @@ const FEUILLES = {
     return {titre:'👨‍👩‍👧‍👦 Ajouter un membre', form:true,
       corps:`<div class="card"><form data-f="ajouter-membre">
         <label class="f" for="m-prenom">Prénom</label><input type="text" id="m-prenom" name="prenom" required maxlength="40" placeholder="Ex. : Élodie">
-        <label class="f" for="m-emoji">Emoji</label><input type="text" id="m-emoji" name="emoji" maxlength="500" value="🙂" placeholder="Ex. : 🧑🏽‍🦱">
+        <label class="f" for="m-emoji">Emoji</label><input type="text" id="m-emoji" name="emoji" maxlength="16" value="🙂" placeholder="Ex. : 🧑🏽‍🦱">
         <label class="f" for="m-couleur">Couleur</label>
         <select id="m-couleur" name="couleur">
           <option value="bleu">Bleu</option>
@@ -957,13 +965,13 @@ async function renderLogin(){
   if (!L.choisi){
     app.innerHTML = `<div class="login"><div style="font-size:3rem">🍽️</div><h1>Repas en famille</h1><p class="muted">Qui es-tu ?</p>
       ${DEMO ? '<div class="banner demo">🧪 Mode démo : choisis un NIP à 4 chiffres à ta première connexion.</div>' : ''}
-      <div class="tiles">${L.membres.map(m => `<button class="tile ${m.couleur}" data-a="login-m" data-m="${m.id}"><span class="e">${esc(m.emoji)}</span>${esc(m.prenom)}</button>`).join('')}</div></div>`;
+      <div class="tiles">${L.membres.map(m => `<button class="tile ${m.couleur}" data-a="login-m" data-m="${m.id}"><span class="e">${renderEmoji(m.emoji, m.prenom)}</span>${esc(m.prenom)}</button>`).join('')}</div></div>`;
     return;
   }
   const m = L.choisi;
   const msg = {nip:'Entre ton NIP', creer:'Première connexion : choisis ton NIP (4 chiffres)', confirmer:'Confirme ton nouveau NIP'}[L.etape];
   const k = ['1','2','3','4','5','6','7','8','9','','0','del'];
-  app.innerHTML = `<div class="login"><div style="font-size:3rem">${esc(m.emoji)}</div><h1>${esc(m.prenom)}</h1><p class="muted">${msg}</p>
+  app.innerHTML = `<div class="login"><div style="font-size:3rem">${renderEmoji(m.emoji, m.prenom)}</div><h1>${esc(m.prenom)}</h1><p class="muted">${msg}</p>
     <div class="dots">${[0,1,2,3].map(i => `<i class="${i < L.nip.length ? 'f' : ''}"></i>`).join('')}</div>
     <div class="keypad">${k.map(x => x === '' ? '<button class="v" tabindex="-1"></button>' : `<button data-a="pin" data-k="${x}" aria-label="${x === 'del' ? 'Effacer' : x}">${x === 'del' ? '⌫' : x}</button>`).join('')}</div>
     <button class="linkbtn" data-a="oubli">NIP oublié ?</button><br><button class="linkbtn" data-a="login-back">← Ce n'est pas moi</button></div>`;
@@ -1039,21 +1047,6 @@ document.addEventListener('click', async e => {
     case 'oubli': toast('Demande à Nadine ou à Marc : onglet Famille → « Réinitialiser le NIP ». Tu pourras ensuite en choisir un nouveau.', 7000); break;
     case 'relancer': L.membres = null; renderLogin(); break;
   }
-});
-document.addEventListener('change', async e => {
-  const input = e.target.closest('#p-e-upload');
-  if (!input || !input.files || !input.files[0]) return;
-  const file = input.files[0];
-  const reader = new FileReader();
-  reader.onload = () => {
-    const field = document.getElementById('p-e');
-    if (!field) return;
-    field.value = String(reader.result || '');
-    const preview = document.getElementById('p-e-preview');
-    if (preview) preview.innerHTML = renderEmoji(field.value, 'emoji');
-    document.querySelectorAll('.emoji-option').forEach(btn => btn.classList.remove('on'));
-  };
-  reader.readAsDataURL(file);
 });
 document.addEventListener('submit', async e => {
   const f = e.target; if (!f.dataset.f) return;
