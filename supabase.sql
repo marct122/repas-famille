@@ -89,10 +89,23 @@ create table if not exists horaires_souper (
   modifie_le  timestamptz not null default now()
 );
 
+create table if not exists presence_maison (
+  jour        date not null,
+  membre      text not null references membres(id) on delete cascade,
+  arrivee     time,
+  depart      time,
+  modifie_par text references membres(id) on delete set null,
+  modifie_le  timestamptz not null default now(),
+  primary key (jour, membre),
+  check (arrivee is not null or depart is not null),
+  check (arrivee is null or depart is null or arrivee <= depart)
+);
+
 create index if not exists presences_jour on presences (jour);
 create index if not exists invites_jour on invites (jour);
 create index if not exists suggestions_jour on suggestions (jour);
 create index if not exists journal_quand on journal (quand desc);
+create index if not exists presence_maison_jour on presence_maison (jour);
 
 -- Aucun accès direct aux tables depuis Internet : tout passe par les
 -- fonctions ci-dessous, qui vérifient la session (NIP).
@@ -104,6 +117,7 @@ alter table suggestions enable row level security;
 alter table journal     enable row level security;
 alter table reglages    enable row level security;
 alter table horaires_souper enable row level security;
+alter table presence_maison enable row level security;
 
 -- ---------------------------------------------------------------------
 --  Données de départ (ne remplace rien si déjà présent)
@@ -260,9 +274,56 @@ begin
     'invites',     (select coalesce(jsonb_agg(to_jsonb(i)), '[]') from invites i where jour between p_debut and p_fin),
     'suggestions', (select coalesce(jsonb_agg(to_jsonb(s)), '[]') from suggestions s where jour between p_debut and p_fin),
     'horaires_souper', (select coalesce(jsonb_agg(jsonb_build_object('jour', jour, 'heure', to_char(heure, 'HH24:MI'))), '[]') from horaires_souper where jour between p_debut and p_fin),
+    'presence_maison', (select coalesce(jsonb_agg(jsonb_build_object('jour', jour, 'membre', membre,
+                          'arrivee', case when arrivee is null then null else to_char(arrivee, 'HH24:MI') end,
+                          'depart', case when depart is null then null else to_char(depart, 'HH24:MI') end)), '[]')
+                        from presence_maison where jour between p_debut and p_fin),
     'journal',     (select coalesce(jsonb_agg(to_jsonb(x) order by x.quand desc), '[]')
                       from (select * from journal order by quand desc limit 40) x)
   );
+end $$;
+
+create or replace function enregistrer_presence_maison(
+  p_jeton uuid, p_membre text, p_jour date, p_arrivee text, p_depart text
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  m membres := _qui(p_jeton);
+  cible membres;
+  actuel presence_maison;
+  arrivee_txt text := nullif(trim(p_arrivee), '');
+  depart_txt text := nullif(trim(p_depart), '');
+begin
+  if m.id <> p_membre and m.id not in ('nadine','marc') then
+    raise exception 'Tu ne peux modifier que ta propre période.';
+  end if;
+  if p_jour < _aujourdhui() then raise exception 'Cette journée est passée.'; end if;
+  select * into cible from membres where id = p_membre;
+  if not found then raise exception 'Membre inconnu.'; end if;
+  if (arrivee_txt is not null and arrivee_txt !~ '^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$')
+     or (depart_txt is not null and depart_txt !~ '^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$') then
+    raise exception 'Indique des heures valides au format 24 h.';
+  end if;
+  if arrivee_txt is not null and depart_txt is not null and arrivee_txt > depart_txt then
+    raise exception 'L’heure d’arrivée doit précéder l’heure de départ.';
+  end if;
+  select * into actuel from presence_maison where jour = p_jour and membre = p_membre;
+  if arrivee_txt is null and depart_txt is null then
+    if not found then return; end if;
+    delete from presence_maison where jour = p_jour and membre = p_membre;
+    insert into journal (par, membre, jour, texte)
+      values (m.id, p_membre, p_jour, 'Période à la maison retirée pour ' || cible.prenom);
+    return;
+  end if;
+  if found and actuel.arrivee is not distinct from arrivee_txt::time
+            and actuel.depart is not distinct from depart_txt::time then return; end if;
+  insert into presence_maison (jour, membre, arrivee, depart, modifie_par, modifie_le)
+    values (p_jour, p_membre, arrivee_txt::time, depart_txt::time, m.id, now())
+    on conflict (jour, membre) do update set arrivee = excluded.arrivee, depart = excluded.depart,
+      modifie_par = m.id, modifie_le = now();
+  insert into journal (par, membre, jour, texte)
+    values (m.id, p_membre, p_jour, 'Période à la maison de ' || cible.prenom || ' : '
+      || concat_ws(' · ', case when arrivee_txt is not null then 'arrivée ' || arrivee_txt end,
+                            case when depart_txt is not null then 'départ ' || depart_txt end));
 end $$;
 
 create or replace function enregistrer_heure_souper(p_jeton uuid, p_jour date, p_heure text) returns void
@@ -529,9 +590,10 @@ revoke execute on function _reglage(text), _maintenant(), _aujourdhui(), _heure_
   _notifier(text, text, text, text, int), _choisir(membres, uuid), envoyer_rappels()
   from public, anon, authenticated;
 revoke execute on function enregistrer_heure_souper(uuid, date, text) from public, authenticated;
+revoke execute on function enregistrer_presence_maison(uuid, text, date, text, text) from public, authenticated;
 grant execute on function list_membres(), connexion(text, text), deconnexion(uuid), donnees(uuid, date, date),
   ajouter_membre(uuid, text, text, text, boolean), supprimer_membre(uuid, text),
-  enregistrer_heure_souper(uuid, date, text),
+  enregistrer_heure_souper(uuid, date, text), enregistrer_presence_maison(uuid, text, date, text, text),
   enregistrer_presence(uuid, text, date, text, text), enregistrer_invite(uuid, uuid, date, text, text[], text[]),
   supprimer_invite(uuid, uuid), proposer_repas(uuid, date, text, text, boolean), choisir_repas(uuid, uuid),
   retirer_choix(uuid, date), supprimer_suggestion(uuid, uuid),

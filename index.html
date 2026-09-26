@@ -120,6 +120,15 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .banner.demo{background:var(--rose-bg);color:var(--rose)}
 .day-h{display:flex;align-items:center;gap:8px;font-weight:700}
 .mine{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin-top:10px;font-size:.88rem}
+.dinner-time{margin:-4px 0 10px}
+.home-range{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.home-edit{margin:2px 0 4px}
+.week-home{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+.home-window{padding:10px 0;border-top:1px solid var(--line)}
+.home-window:first-child{border-top:0}
+.home-window-title{display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;font-weight:600}
+.home-time-fields{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center;max-width:250px}
+.home-time-fields select{width:100%;min-width:0;min-height:44px;padding:8px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
 .weeknav{display:flex;align-items:center;gap:8px;margin-top:8px}
 .weeknav .btn{min-width:44px}
 .pchip{display:inline-block;font-size:.82rem;padding:2px 9px;border-radius:999px;margin:2px 4px 2px 0}
@@ -325,10 +334,11 @@ const SEED = [
 ];
 const Demo = (() => {
   const K = 'repas-demo-v1';
-  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], horaires_souper:[], journal:[]});
+  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], horaires_souper:[], presence_maison:[], journal:[]});
   const hydrate = () => {
     const cur = LS.get(K) || seed();
     cur.horaires_souper = cur.horaires_souper || [];
+    cur.presence_maison = cur.presence_maison || [];
     const byId = Object.fromEntries(SEED.map(m => [m.id, m]));
     cur.membres = (cur.membres || []).map(m => {
       const base = byId[m.id];
@@ -407,8 +417,32 @@ const Demo = (() => {
       return {moi:m.id, heure_limite:11, heure_rappel:10, sujet_parents:m.parent ? 'repas-demo-parents' : null,
         membres:db.membres.map(x => ({...x, nip:undefined, sujet_ntfy:x.id === m.id ? x.sujet_ntfy : null})),
         presences:db.presences.filter(dans), invites:db.invites.filter(dans), suggestions:db.suggestions.filter(dans),
-        horaires_souper:db.horaires_souper.filter(dans),
+        horaires_souper:db.horaires_souper.filter(dans), presence_maison:db.presence_maison.filter(dans),
         journal:db.journal.slice(0,40)};
+    },
+    enregistrer_presence_maison({p_jeton, p_membre, p_jour, p_arrivee, p_depart}){
+      const m = qui(p_jeton);
+      if (m.id !== p_membre && !['nadine','marc'].includes(m.id)) err('Tu ne peux modifier que ta propre période.');
+      if (p_jour < today()) err('Cette journée est passée.');
+      const cible = M(p_membre); if (!cible) err('Membre inconnu.');
+      const arrivee = String(p_arrivee || '').trim(), depart = String(p_depart || '').trim();
+      const valide = h => !h || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(h);
+      if (!valide(arrivee) || !valide(depart)) err('Indique des heures valides au format 24 h.');
+      if (arrivee && depart && arrivee > depart) err('L’heure d’arrivée doit précéder l’heure de départ.');
+      const i = db.presence_maison.findIndex(x => x.jour === p_jour && x.membre === p_membre);
+      const actuel = i >= 0 ? db.presence_maison[i] : null;
+      if (!arrivee && !depart) {
+        if (!actuel) return null;
+        db.presence_maison.splice(i, 1);
+        log(m.id, p_membre, p_jour, `Période à la maison retirée pour ${cible.prenom}`);
+        return null;
+      }
+      if (actuel && actuel.arrivee === (arrivee || null) && actuel.depart === (depart || null)) return null;
+      const periode = {jour:p_jour, membre:p_membre, arrivee:arrivee || null, depart:depart || null};
+      if (i >= 0) db.presence_maison[i] = periode; else db.presence_maison.push(periode);
+      const details = [arrivee ? `arrivée ${arrivee}` : '', depart ? `départ ${depart}` : ''].filter(Boolean).join(' · ');
+      log(m.id, p_membre, p_jour, `Période à la maison de ${cible.prenom} : ${details}`);
+      return null;
     },
     enregistrer_heure_souper({p_jeton, p_jour, p_heure}){
       const m = qui(p_jeton);
@@ -516,9 +550,22 @@ const prenom = id => (membre(id) || {}).prenom || id || '?';
 const moi = () => membre(S.data.moi);
 const peut = id => id === S.data.moi || moi().parent;
 const pres = (j, id) => S.data.presences.find(p => p.jour === j && p.membre === id);
+const presenceMaison = (j, id) => (S.data.presence_maison || []).find(p => p.jour === j && p.membre === id);
 const invitesDu = j => S.data.invites.filter(g => g.jour === j).sort((a,b) => a.cree < b.cree ? -1 : 1);
 const suggDu = j => S.data.suggestions.filter(s => s.jour === j).sort((a,b) => a.cree < b.cree ? -1 : 1);
 const repasChoisi = j => S.data.suggestions.find(s => s.jour === j && s.choisi);
+const heureSouper = j => (S.data.horaires_souper || []).find(x => x.jour === j)?.heure || '';
+const peutModifierMaison = id => id === S.data.moi || ['nadine','marc'].includes(S.data.moi);
+
+function resumePresenceMaison(j, id){
+  const p = presenceMaison(j, id), heure = heureSouper(j);
+  if (!p) return {texte:'', alerte:''};
+  const texte = p.arrivee && p.depart ? `${p.arrivee} → ${p.depart}` : p.arrivee ? `arrive à ${p.arrivee}` : `part à ${p.depart}`;
+  if (!heure) return {texte, alerte:''};
+  if (p.arrivee && heure < p.arrivee) return {texte, alerte:'⚠️ arrive après le souper'};
+  if (p.depart && heure > p.depart) return {texte, alerte:'⚠️ part avant le souper'};
+  return {texte, alerte:''};
+}
 
 function statutSouper(j, id){
   const p = pres(j, id);
@@ -584,6 +631,7 @@ function enTete(titre, sous){
 /* ---------- Cartes réutilisables ---------- */
 function carteSouper(j){
   const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
+  const heure = heureSouper(j);
   const ordre = {present:0, attente:1, absent:2, auto:3};
   const lignes = S.data.membres.map(m => ({m, st:statutSouper(j, m.id)})).sort((a,b) => ordre[a.st.v] - ordre[b.st.v]);
   const nP = lignes.filter(x => x.st.v === 'present').length, nA = lignes.filter(x => x.st.v === 'attente').length;
@@ -592,7 +640,7 @@ function carteSouper(j){
   if (r) repas = `<div class="meal"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}<div class="small">Suggéré par ${esc(prenom(r.propose_par))} · choisi par ${esc(prenom(r.choisi_par))}</div></div>`;
   else if (sug.length) repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">🤔 <b>Repas à décider</b> — ${sug.length} suggestion${sug.length > 1 ? 's' : ''} : ${sug.map(s => esc(s.titre)).join(', ')} ›</div>`;
   else repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">Aucun repas prévu — <b>suggérer un repas</b> ›</div>`;
-  return `<div class="card"><h3>🍽️ Souper · ${cap(relJour(j))}</h3>${repas}
+  return `<div class="card"><h3>🍽️ Souper · ${cap(relJour(j))}</h3><div class="small dinner-time">${heure ? `🕒 Souper prévu à <b>${esc(heure)}</b>` : '🕒 Heure du souper pas encore fixée'}</div>${repas}
     <div class="count"><b>${nP + gs.length}</b> personne${nP + gs.length > 1 ? 's' : ''} au souper${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}${nA ? ` · <span class="late">${nA} en attente</span>` : ''}</div>
     <div class="list">${lignes.map(x => ligneMembre(j, x.m, x.st, txt)).join('')}${gs.map(g => ligneInvite(j, g, txt)).join('')}</div>
     ${j >= today() ? `<button class="btn ghost sm" data-a="invite" data-j="${j}">➕ Ajouter un invité</button>` : ''}
@@ -602,8 +650,12 @@ function ligneMembre(j, m, st, txt){
   const ed = j >= today() && peut(m.id);
   const f = txt && (st.v === 'present' || st.v === 'attente') ? drapeaux(txt, m) : null;
   const icones = f ? (f.all.length ? ' ⚠️' : '') + (f.dis.length ? ' 🚩' : '') : '';
+  const maison = st.v === 'present' || st.v === 'attente' ? resumePresenceMaison(j, m.id) : {texte:'', alerte:''};
+  const edMaison = j >= today() && ['nadine','marc'].includes(S.data.moi);
   return `<div class="row${ed ? ' tap' : ''}" ${ed ? `data-a="person" data-m="${m.id}" data-j="${j}"` : ''}>
     ${nomTag(m)}${icones}<span class="grow"></span>${st.tard ? `<span class="late small">⏰ ${heure(st.maj)}</span>` : ''}${pill(st.v, m)}
+    ${maison.texte ? `<div class="flags home-range"><span class="small">🏠 ${esc(maison.texte)}</span>${maison.alerte ? `<span class="flag all">${maison.alerte}</span>` : ''}</div>` : ''}
+    ${edMaison ? `<button type="button" class="btn ghost sm home-edit" data-a="periode-maison" data-m="${m.id}" data-j="${j}" aria-label="Modifier la période à la maison de ${esc(m.prenom)}">🏠 Période maison</button>` : ''}
     ${f && (f.all.length || f.dis.length) ? `<div class="flags">${htmlFlags(f)}</div>` : ''}</div>`;
 }
 function ligneInvite(j, g, txt){
@@ -647,6 +699,7 @@ function vueAujourdhui(){
   return `${enTete(`Bonjour ${esc(moi().prenom)} ${esc(moi().emoji)}`, cap(jourLong(t)))}${bandeau}
     <div class="card${aFaire ? ' todo' : ''}"><h3>✋ Mes réponses${aFaire ? ' <span class="tag warn">À faire</span>' : ''}</h3>
       ${blocReponse(id, t, 'souper', 'Souper ce soir')}
+      ${boutonPeriodeMaison(id, t, 'Mes heures à la maison')}
       ${blocReponse(id, dm, 'lunch', 'Lunch de demain <span class="small">— froid = à l\'école · chaud = à la maison</span>')}
       ${blocReponse(id, dm, 'souper', 'Souper de demain')}
     </div>
@@ -662,6 +715,7 @@ function vueSemaine(){
       <button class="btn ghost sm" data-a="sem" data-d="1">›</button></div>
     ${jours.map(j => {
       const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
+      const heure = heureSouper(j), maison = presenceMaison(j, id);
       let nP = 0, nA = 0, nF = 0, nC = 0;
       for (const m of S.data.membres){
         const s = statutSouper(j, m.id).v, lu = statutLunch(j, m.id).v;
@@ -670,9 +724,11 @@ function vueSemaine(){
       return `<div class="card">
         <div class="day-h tap" data-a="day" data-j="${j}">${cap(jourLong(j))}${j === today() ? ' <span class="tag">Aujourd\'hui</span>' : ''}<span class="grow"></span><span class="muted">Détails ›</span></div>
         <div class="small" style="margin-top:4px">🍽️ ${r ? `<b style="color:var(--ink)">${esc(r.titre)}</b>` : sug.length ? `${sug.length} suggestion${sug.length > 1 ? 's' : ''} — à décider` : 'Repas pas encore prévu'}</div>
+        <div class="small dinner-time">🕒 ${heure ? `Souper prévu à <b>${esc(heure)}</b>` : 'Heure du souper pas encore fixée'}</div>
         <div class="small">👥 ${nP + gs.length} au souper${gs.length ? ` (dont ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}${nA ? ` · ${nA} en attente` : ''} · 🥪 ${nF} froid · 🍲 ${nC} chaud</div>
         <div class="mine"><span>Mon souper</span>${seg(id, j, 'souper', statutSouper(j, id).v, true, true)}
           <span>Mon lunch</span>${seg(id, j, 'lunch', statutLunch(j, id).v, true, true)}</div>
+        ${boutonPeriodeMaison(id, j, '🏠 Ma période à la maison', maison)}
       </div>`;
     }).join('')}
     <div class="small">Lunch : — aucun · 🥪 froid (à l'école) · 🍲 chaud (à la maison)</div>`;
@@ -758,8 +814,35 @@ function vueMoi(){
 }
 const VUES = {auj:vueAujourdhui, sem:vueSemaine, repas:vueRepas, fam:vueFamille, moi:vueMoi};
 
+function boutonPeriodeMaison(id, j, texte, periode = presenceMaison(j, id)){
+  if (j < today() || !peutModifierMaison(id)) return '';
+  const resume = periode && (periode.arrivee || periode.depart)
+    ? [periode.arrivee, periode.depart].filter(Boolean).join(' → ')
+    : 'à préciser';
+  return `<div class="week-home"><button type="button" class="btn ghost sm" data-a="periode-maison" data-m="${id}" data-j="${j}">${esc(texte)} · ${esc(resume)}</button></div>`;
+}
+
+function champHeureMaison(label, name, value){
+  const h = value ? value.slice(0,2) : '', min = value ? value.slice(3,5) : '';
+  const heures = [...Array(24)].map((_, i) => String(i).padStart(2,'0'));
+  const minutes = [...Array(60)].map((_, i) => String(i).padStart(2,'0'));
+  return `<div class="home-window"><div class="home-window-title"><span>${label}</span><span class="small">Facultatif</span></div>
+    <div class="home-time-fields"><select name="${name}_h" aria-label="${label}, heure"><option value="">--</option>${heures.map(x => `<option value="${x}" ${x === h ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <span>:</span><select name="${name}_m" aria-label="${label}, minutes"><option value="">--</option>${minutes.map(x => `<option value="${x}" ${x === min ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>`;
+}
+
 /* ---------- Feuilles (fenêtres du bas) ---------- */
 const FEUILLES = {
+  presence_maison({m, j}){
+    const p = presenceMaison(j, m) || {};
+    return {titre:`🏠 Période à la maison · ${esc(prenom(m))}`, form:true,
+      corps:`<div class="card"><form data-f="presence-maison" data-m="${esc(m)}" data-j="${esc(j)}">
+        <p class="small">${esc(cap(jourLong(j)))} · Laisse une borne vide si tu ne la connais pas.</p>
+        ${champHeureMaison('Arrivée à la maison', 'arrivee', p.arrivee || '')}
+        ${champHeureMaison('Départ de la maison', 'depart', p.depart || '')}
+        <button class="btn full" style="margin-top:10px">Enregistrer</button>
+      </form></div>`};
+  },
   person({m, j}){
     const p = membre(m);
     return {titre:`${esc(p.emoji)} ${esc(p.prenom)} — ${esc(jourLong(j))}`,
@@ -928,6 +1011,7 @@ document.addEventListener('click', async e => {
     case 'close': fermer(); break;
     case 'set': el.disabled = true; await act('enregistrer_presence', {p_membre:d.m, p_jour:d.j, p_champ:d.c, p_valeur:d.v}); el.disabled = false; break;
     case 'person': ouvrir('person', {m:d.m, j:d.j}); break;
+    case 'periode-maison': ouvrir('presence_maison', {m:d.m, j:d.j}); break;
     case 'day': ouvrir('day', {j:d.j}); break;
     case 'invite': ouvrir('invite', {j:d.j}); break;
     case 'del-invite': if (confirm('Retirer cet invité du souper ?')) await act('supprimer_invite', {p_id:d.id}, 'Invité retiré'); break;
@@ -983,6 +1067,17 @@ document.addEventListener('submit', async e => {
     case 'heure-picker': {
       const heure = `${v.heure_h}:${v.heure_m}`;
       ok = await act('enregistrer_heure_souper', {p_jour:f.dataset.j, p_heure:heure}, `Heure du souper enregistrée : ${heure}`);
+      if (ok) fermer();
+      break;
+    }
+    case 'presence-maison': {
+      const arriveeH = String(v.arrivee_h || ''), arriveeM = String(v.arrivee_m || '');
+      const departH = String(v.depart_h || ''), departM = String(v.depart_m || '');
+      if (!!arriveeH !== !!arriveeM || !!departH !== !!departM) { toast('Choisis une heure et des minutes, ou laisse les deux vides.'); break; }
+      const arrivee = arriveeH ? `${arriveeH}:${arriveeM}` : '';
+      const depart = departH ? `${departH}:${departM}` : '';
+      if (arrivee && depart && arrivee > depart) { toast('L’arrivée doit être avant le départ.'); break; }
+      ok = await act('enregistrer_presence_maison', {p_membre:f.dataset.m, p_jour:f.dataset.j, p_arrivee:arrivee, p_depart:depart}, 'Période à la maison enregistrée');
       if (ok) fermer();
       break;
     }
