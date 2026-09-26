@@ -91,6 +91,17 @@ input[type=text],input[type=password],textarea{width:100%;font:inherit;padding:1
 textarea{min-height:64px;resize:vertical}
 label.f{display:block;font-weight:600;margin:12px 0 4px;font-size:.9rem}
 label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
+.emoji-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:8px 0 12px}
+.emoji-option{border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:8px 4px;cursor:pointer;font-size:1.6rem;display:flex;align-items:center;justify-content:center;min-height:48px;transition:transform .15s ease, border-color .15s ease, background .15s ease}
+.emoji-option.on{border-color:var(--accent);background:var(--bleu-bg);transform:translateY(-1px)}
+.custom-emoji{display:inline-block;width:1.4em;height:1.4em;object-fit:cover;vertical-align:middle;border-radius:8px;background:#fff}
+.preview-emoji{display:flex;align-items:center;justify-content:center;min-height:52px;border:1.5px dashed var(--line);background:var(--bg);border-radius:12px;margin:8px 0 12px;font-size:1.8rem}
+.upload-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0}
+.upload-row input[type=file]{flex:1;min-width:160px}
+.time-display{width:120px;min-height:44px;max-width:100%;flex:0 0 120px;display:inline-flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-variant-numeric:tabular-nums;cursor:pointer}
+.time-select-row{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 0}
+.time-select-row label{width:110px}
+.time-select-row select{width:100%;min-height:48px;padding:8px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:1.1rem}
 .hint{font-size:.8rem;color:var(--muted);margin-top:4px}
 .chips{display:flex;gap:6px;overflow-x:auto;margin:8px -16px 0;padding:2px 16px 8px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
@@ -177,6 +188,33 @@ const LS = {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 const liste = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+const isCustomEmoji = v => /^data:image\//i.test(String(v || '')) || /^https?:\/\//i.test(String(v || ''));
+const renderEmoji = (v, alt = 'emoji') => {
+  const value = String(v || '').trim();
+  if (!value) return '🙂';
+  if (isCustomEmoji(value)) return `<img class="custom-emoji" src="${value}" alt="${esc(alt)}">`;
+  return esc(value);
+};
+const EMOJI_CHOICES = [
+  '🙂','😊','😀','😄','😁','😎','🤩','😇','😜','🤠',
+  '�🏻','👶🏼','👶🏽','👶🏾','👶🏿',
+  '👧🏻','👧🏼','👧🏽','👧🏾','👧🏿',
+  '👦🏻','👦🏼','👦🏽','👦🏾','👦🏿',
+  '🧑🏻','🧑🏼','🧑🏽','🧑🏾','🧑🏿',
+  '👩🏻','👩🏼','👩🏽','👩🏾','👩🏿',
+  '👨🏻','👨🏼','👨🏽','👨🏾','👨🏿',
+  '👵🏻','👵🏼','👵🏽','👵🏾','👵🏿',
+  '👴🏻','👴🏼','👴🏽','👴🏾','👴🏿',
+  '👩🏻‍🦰','👩🏼‍🦰','👩🏽‍🦰','👩🏾‍🦰','👩🏿‍🦰',
+  '👩🏻‍🦱','👩🏼‍🦱','👩🏽‍🦱','👩🏾‍🦱','👩🏿‍🦱',
+  '👩🏻‍🦳','👩🏼‍🦳','👩🏽‍🦳','👩🏾‍🦳','👩🏿‍🦳',
+  '👩🏻‍🦲','👩🏼‍🦲','👩🏽‍🦲','👩🏾‍🦲','👩🏿‍🦲',
+  '👨🏻‍🦰','👨🏼‍🦰','👨🏽‍🦰','👨🏾‍🦰','👨🏿‍🦰',
+  '👨🏻‍🦱','👨🏼‍🦱','👨🏽‍🦱','👨🏾‍🦱','👨🏿‍🦱',
+  '👨🏻‍🦳','👨🏼‍🦳','👨🏽‍🦳','👨🏾‍🦳','👨🏿‍🦳',
+  '🧑🏻‍🦱','🧑🏼‍🦱','🧑🏽‍🦱','🧑🏾‍🦱','🧑🏿‍🦱',
+  '🧑🏻‍🦰','🧑🏼‍🦰','🧑🏽‍🦰','🧑🏾‍🦰','🧑🏿‍🦰'
+];
 
 /* ---------- Dates (toujours à l'heure du Québec) ---------- */
 const _fp = new Intl.DateTimeFormat('en-CA', {timeZone:TZ, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
@@ -280,16 +318,36 @@ async function act(fn, args, okMsg){
 /* ---------- Mode démo : mêmes fonctions que supabase.sql, stockées sur l'appareil ---------- */
 const SEED = [
   {id:'marc',      prenom:'Marc',      emoji:'🧔',    couleur:'bleu', parent:true,  priorite:1, aime:'', naime_pas:[], allergies:[]},
-  {id:'nadine',    prenom:'Nadine',    emoji:'👩',    couleur:'rose', parent:true,  priorite:2, aime:'', naime_pas:['ragoût','porc'], allergies:[]},
+  {id:'nadine',    prenom:'Nadine',    emoji:'👩🏽‍🦱',    couleur:'rose', parent:true,  priorite:2, aime:'', naime_pas:['ragoût','porc'], allergies:[]},
   {id:'aleck',     prenom:'Aleck',     emoji:'🧑',    couleur:'bleu', parent:false, priorite:0, aime:'', naime_pas:['tout ce qui vient de la mer'], allergies:[]},
   {id:'william',   prenom:'William',   emoji:'👱',    couleur:'bleu', parent:false, priorite:0, aime:'', naime_pas:['jambon'], allergies:[]},
-  {id:'raphaelle', prenom:'Raphaelle', emoji:'👩‍🦰', couleur:'rose', parent:false, priorite:0, aime:'', naime_pas:[], allergies:[]}
+  {id:'raphaelle', prenom:'Raphaelle', emoji:'👩🏽‍🦱', couleur:'rose', parent:false, priorite:0, aime:'', naime_pas:[], allergies:[]}
 ];
 const Demo = (() => {
   const K = 'repas-demo-v1';
-  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], journal:[]});
-  let db = LS.get(K) || seed();
-  const save = () => LS.set(K, db);
+  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], horaires_souper:[], journal:[]});
+  const hydrate = () => {
+    const cur = LS.get(K) || seed();
+    cur.horaires_souper = cur.horaires_souper || [];
+    const byId = Object.fromEntries(SEED.map(m => [m.id, m]));
+    cur.membres = (cur.membres || []).map(m => {
+      const base = byId[m.id];
+      if (!base) return m;
+      return {...m, ...base, nip: m.nip || null, sujet_ntfy: m.sujet_ntfy || 'repas-demo-' + m.id};
+    });
+    for (const base of SEED) {
+      if (!cur.membres.some(m => m.id === base.id)) cur.membres.push({...base, nip:null, sujet_ntfy:'repas-demo-' + base.id});
+    }
+    const overrides = {nadine:'👩🏽‍🦱', raphaelle:'👩🏽‍🦱'};
+    for (const [id, emoji] of Object.entries(overrides)) {
+      const member = cur.membres.find(m => m.id === id);
+      if (member) member.emoji = emoji;
+    }
+    LS.set(K, cur);
+    return cur;
+  };
+  let db = hydrate();
+  const save = () => { LS.set(K, db); };
   const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const now = () => new Date().toISOString();
   const err = m => { throw new Error(m); };
@@ -312,6 +370,31 @@ const Demo = (() => {
   }
   const F = {
     list_membres: () => db.membres.map(m => ({id:m.id, prenom:m.prenom, emoji:m.emoji, couleur:m.couleur, parent:m.parent, a_nip:!!m.nip})),
+    ajouter_membre({p_jeton, p_prenom, p_emoji, p_couleur, p_parent}){
+      const m = qui(p_jeton); if (!m.parent) err('Seuls les parents peuvent ajouter un membre.');
+      const prenom = String(p_prenom || '').trim(); if (!prenom) err('Le prénom est obligatoire.');
+      const couleur = ['rose','bleu'].includes(String(p_couleur || '')) ? String(p_couleur) : 'rose';
+      const baseId = prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'membre';
+      let id = baseId; let n = 2; while (db.membres.some(x => x.id === id)) id = `${baseId}-${n++}`;
+      const perso = {id, prenom, emoji:String(p_emoji || '').trim() || '🙂', couleur, parent:!!p_parent, priorite:0, aime:'', naime_pas:[], allergies:[], nip:null, sujet_ntfy:'repas-demo-' + id};
+      db.membres.push(perso); db.membres.sort((a,b) => (a.prenom || '').localeCompare(b.prenom || ''));
+      log(m.id, id, null, `Membre ajouté : ${prenom}`);
+      return null;
+    },
+    supprimer_membre({p_jeton, p_membre}){
+      const m = qui(p_jeton); if (!['nadine','marc'].includes(m.id)) err('Seule Nadine ou Marc peut supprimer un membre.');
+      if (p_membre === m.id) err('Tu ne peux pas te supprimer toi-même.');
+      const c = M(p_membre); if (!c) return null;
+      db.sessions = Object.fromEntries(Object.entries(db.sessions).filter(([, membreId]) => membreId !== p_membre));
+      db.presences = db.presences.filter(x => x.membre !== p_membre);
+      db.invites = db.invites.filter(x => x.invite_par !== p_membre);
+      db.suggestions = db.suggestions.map(s => ({...s, propose_par: s.propose_par === p_membre ? m.id : s.propose_par, choisi_par: s.choisi_par === p_membre ? null : s.choisi_par}))
+        .filter(s => !(s.propose_par === p_membre && s.choisi_par === null && s.choisi));
+      db.journal = db.journal.filter(x => x.par !== p_membre && x.membre !== p_membre);
+      db.membres = db.membres.filter(x => x.id !== p_membre);
+      log(m.id, p_membre, null, `Membre supprimé : ${c.prenom}`);
+      return null;
+    },
     connexion({p_membre, p_nip}){
       if (!/^\d{4}$/.test(p_nip)) err('Le NIP doit contenir 4 chiffres.');
       const m = M(p_membre); if (!m) err('Membre inconnu.');
@@ -324,7 +407,23 @@ const Demo = (() => {
       return {moi:m.id, heure_limite:11, heure_rappel:10, sujet_parents:m.parent ? 'repas-demo-parents' : null,
         membres:db.membres.map(x => ({...x, nip:undefined, sujet_ntfy:x.id === m.id ? x.sujet_ntfy : null})),
         presences:db.presences.filter(dans), invites:db.invites.filter(dans), suggestions:db.suggestions.filter(dans),
+        horaires_souper:db.horaires_souper.filter(dans),
         journal:db.journal.slice(0,40)};
+    },
+    enregistrer_heure_souper({p_jeton, p_jour, p_heure}){
+      const m = qui(p_jeton);
+      if (p_jour < today()) err('Cette journée est passée.');
+      const i = db.horaires_souper.findIndex(x => x.jour === p_jour);
+      if (!String(p_heure || '').trim()) {
+        if (i >= 0) db.horaires_souper.splice(i, 1);
+        log(m.id, m.id, p_jour, 'Heure du souper retirée');
+        return null;
+      }
+      if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(p_heure)) err('Indique une heure valide.');
+      const horaire = {jour:p_jour, heure:p_heure};
+      if (i >= 0) db.horaires_souper[i] = horaire; else db.horaires_souper.push(horaire);
+      log(m.id, m.id, p_jour, `Heure du souper fixée à ${p_heure}`);
+      return null;
     },
     enregistrer_presence({p_jeton, p_membre, p_jour, p_champ, p_valeur}){
       const m = qui(p_jeton);
@@ -439,7 +538,7 @@ function convives(j){
 }
 
 /* ---------- Petits morceaux d'interface ---------- */
-const nomTag = m => m ? `<span class="who ${m.couleur}">${esc(m.emoji)} ${esc(m.prenom)}</span>` : '';
+const nomTag = m => m ? `<span class="who ${m.couleur}">${renderEmoji(m.emoji, m.prenom)} ${esc(m.prenom)}</span>` : '';
 function pill(v, m){
   const e = m && m.couleur === 'rose' ? 'e' : '';
   const t = {present:`Présent${e}`, absent:`Absent${e}`, attente:'En attente', auto:'Absent' + e + ' (sans réponse)'}[v];
@@ -582,10 +681,13 @@ function vueRepas(){
   const t = today();
   if (!S.repasJour || S.repasJour < t) S.repasJour = t;
   const jours = [...Array(14)].map((_, i) => addDays(t, i)), j = S.repasJour, sug = suggDu(j), parent = moi().parent;
+  const heure = (S.data.horaires_souper || []).find(x => x.jour === j)?.heure || '';
   const conv = convives(j);
   return `${enTete('Repas', 'Suggère un souper; Nadine ou Marc choisissent le repas officiel.')}
     <div class="chips">${jours.map(x => `<button class="chip${x === j ? ' on' : ''}" data-a="repas-jour" data-j="${x}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : suggDu(x).length ? '💡' : ''}</span></button>`).join('')}</div>
     <div class="card"><h3>🍽️ Souper · ${cap(jourLong(j))}</h3>
+      <label class="f" for="heure-souper">Heure du souper</label>
+      <div class="actions" style="margin-top:4px"><button type="button" id="heure-souper" class="time-display" data-a="ouvrir-heure" data-j="${j}" aria-label="Choisir l’heure du souper, format 24 heures"><span>${heure ? esc(heure) : 'HH:MM'}</span><span aria-hidden="true">🕒</span></button></div>
       <div class="small">Présents ou en attente : ${conv.length ? esc(conv.map(c => c.label).join(', ')) : 'personne pour l\'instant'}</div>
       ${sug.length ? sug.map(s => carteSugg(j, s, parent)).join('') : '<p class="muted">Aucune suggestion pour ce jour.</p>'}
     </div>
@@ -623,8 +725,9 @@ function vueFamille(){
       <div style="margin-top:8px"><b>Aime :</b> ${m.aime ? esc(m.aime) : '<span class="small">—</span>'}</div>
       <div style="margin-top:4px"><b>N'aime pas :</b> ${chipsL(m.naime_pas, 'dis')}</div>
       <div style="margin-top:4px"><b>Allergies :</b> ${chipsL(m.allergies, 'all')}</div>
-      ${m0.parent && m.id !== m0.id ? `<div class="actions"><button class="btn danger sm" data-a="reset-nip" data-m="${m.id}">🔑 Réinitialiser le NIP</button></div>` : ''}
+      ${m.id !== m0.id ? `<div class="actions">${['nadine','marc'].includes(m0.id) ? `<button class="btn danger sm" data-a="supprimer-membre" data-m="${m.id}">🗑️ Supprimer</button>` : ''}${m0.parent ? `<button class="btn ghost sm" data-a="reset-nip" data-m="${m.id}">🔑 NIP</button>` : ''}</div>` : ''}
     </div>`).join('')}
+    ${m0.parent ? `<div class="card"><h3>👨‍👩‍👧‍👦 Ajouter un membre</h3><div class="actions"><button class="btn full" data-a="ajouter-membre">Ajouter un membre</button></div></div>` : ''}
     <div class="card"><h3>ℹ️ Comment fonctionnent les alertes</h3>
       <p class="small">🚩 = risque de ne pas aimer · ⚠️ = allergie. L'app compare le nom et les ingrédients du repas avec les profils des personnes présentes (et des invités).</p>
       <p class="small">Certains mots couvrent une famille d'aliments : <b>tout ce qui vient de la mer</b>, <b>poisson</b>, <b>fruits de mer</b>, <b>porc</b> (jambon, bacon, saucisse…), <b>ragoût</b>, <b>noix</b>, <b>arachides</b>, <b>gluten</b>, <b>lactose</b>, <b>oeufs</b>. Pour le reste, écris simplement l'aliment (ex. : champignons).</p>
@@ -633,7 +736,7 @@ function vueFamille(){
 function vueMoi(){
   const m = moi();
   const sujet = t => `<div class="code">${esc(t)}</div><button class="btn ghost sm" data-a="copier" data-txt="${esc(t)}">📋 Copier</button>`;
-  return `${enTete(`${esc(m.emoji)} ${esc(m.prenom)}`, m.parent ? 'Parent' : '')}
+  return `${enTete(`${renderEmoji(m.emoji, m.prenom)} ${esc(m.prenom)}`, m.parent ? 'Parent' : '')}
     <div class="card"><h3>🔔 Recevoir les notifications</h3>
       <ol class="steps">
         <li>Installe l'app gratuite <b>ntfy</b> (App Store ou Google Play).</li>
@@ -677,16 +780,52 @@ const FEUILLES = {
         <p class="small">Invité par : <b>${esc(moi().prenom)}</b></p>
         <button class="btn full">Ajouter l'invité</button></form></div>`};
   },
+  heure_souper({j}){
+    const actuelle = (S.data.horaires_souper || []).find(x => x.jour === j)?.heure || '18:00';
+    const heures = [...Array(24)].map((_, i) => String(i).padStart(2,'0'));
+    const minutes = [...Array(60)].map((_, i) => String(i).padStart(2,'0'));
+    return {titre:`🕒 Heure du souper — ${esc(jourLong(j))}`, form:true,
+      corps:`<div class="card"><form data-f="heure-picker" data-j="${j}">
+        <div class="time-select-row">
+          <label class="f" for="heure-picker-h">Heure<select id="heure-picker-h" name="heure_h">${heures.map(h => `<option value="${h}" ${h === actuelle.slice(0,2) ? 'selected' : ''}>${h}</option>`).join('')}</select></label>
+          <span aria-hidden="true">:</span>
+          <label class="f" for="heure-picker-m">Minutes<select id="heure-picker-m" name="heure_m">${minutes.map(m => `<option value="${m}" ${m === actuelle.slice(3,5) ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        </div>
+        <button class="btn full">Enregistrer l'heure</button>
+      </form><div class="actions"><button type="button" class="btn danger sm" data-a="effacer-heure" data-j="${j}">Retirer l'heure</button></div></div>`};
+  },
   profil({m}){
     const p = membre(m);
+    const emojiGrid = EMOJI_CHOICES.map(e => `<button type="button" class="emoji-option ${e === p.emoji ? 'on' : ''}" data-emoji-value="${esc(e)}" aria-label="Choisir l'emoji ${e}">${e}</button>`).join('');
+    const preview = isCustomEmoji(p.emoji) ? `<img class="custom-emoji" src="${p.emoji}" alt="emoji">` : p.emoji || '🙂';
     return {titre:`✏️ Profil de ${esc(p.prenom)}`, form:true,
       corps:`<div class="card"><form data-f="profil" data-m="${m}">
-        <label class="f" for="p-e">Emoji</label><input type="text" id="p-e" name="emoji" maxlength="8" value="${esc(p.emoji)}">
+        <label class="f" for="p-e">Emoji</label>
+        <div class="preview-emoji" id="p-e-preview">${renderEmoji(p.emoji, p.prenom)}</div>
+        <div class="emoji-grid">${emojiGrid}</div>
+        <div class="upload-row">
+          <input type="file" id="p-e-upload" accept="image/*" aria-label="Téléverser son propre emoji">
+        </div>
+        <input type="text" id="p-e" name="emoji" maxlength="500" value="${esc(p.emoji)}" placeholder="Ex. : 👩🏽‍🦰 ou un fichier image">
+        <div class="hint">Sélectionne un emoji proposé, écris-en un autre ou téléverse une image pour ton propre emoji.</div>
         <label class="f" for="p-a">Aime (goûts et préférences)</label><textarea id="p-a" name="aime" maxlength="300">${esc(p.aime)}</textarea>
         <label class="f" for="p-d">N'aime pas (séparés par des virgules)</label><input type="text" id="p-d" name="naime_pas" maxlength="300" value="${esc((p.naime_pas || []).join(', '))}">
         <div class="hint">Ex. : porc, champignons, tout ce qui vient de la mer</div>
         <label class="f" for="p-l">Allergies (séparées par des virgules)</label><input type="text" id="p-l" name="allergies" maxlength="300" value="${esc((p.allergies || []).join(', '))}">
         <button class="btn full" style="margin-top:14px">Enregistrer</button></form></div>`};
+  },
+  ajouter_membre(){
+    return {titre:'👨‍👩‍👧‍👦 Ajouter un membre', form:true,
+      corps:`<div class="card"><form data-f="ajouter-membre">
+        <label class="f" for="m-prenom">Prénom</label><input type="text" id="m-prenom" name="prenom" required maxlength="40" placeholder="Ex. : Élodie">
+        <label class="f" for="m-emoji">Emoji</label><input type="text" id="m-emoji" name="emoji" maxlength="500" value="🙂" placeholder="Ex. : 🧑🏽‍🦱">
+        <label class="f" for="m-couleur">Couleur</label>
+        <select id="m-couleur" name="couleur">
+          <option value="bleu">Bleu</option>
+          <option value="rose" selected>Rose</option>
+        </select>
+        <label class="chk"><input type="checkbox" name="parent"> C'est un parent</label>
+        <button class="btn full" style="margin-top:14px">Ajouter</button></form></div>`};
   },
   nip(){
     return {titre:'🔑 Changer mon NIP', form:true,
@@ -769,6 +908,19 @@ async function copier(txt){
   catch(e){ prompt('Copie ce texte :', txt); }
 }
 document.addEventListener('click', async e => {
+  const emojiChoice = e.target.closest('.emoji-option');
+  if (emojiChoice) {
+    const field = document.getElementById('p-e');
+    if (field) {
+      const value = emojiChoice.dataset.emojiValue;
+      field.value = value;
+      const preview = document.getElementById('p-e-preview');
+      if (preview) preview.innerHTML = renderEmoji(value, 'emoji');
+      document.querySelectorAll('.emoji-option').forEach(btn => btn.classList.toggle('on', btn === emojiChoice));
+      field.focus();
+    }
+    return;
+  }
   const el = e.target.closest('[data-a]'); if (!el) return;
   const d = el.dataset;
   switch (d.a){
@@ -781,11 +933,15 @@ document.addEventListener('click', async e => {
     case 'del-invite': if (confirm('Retirer cet invité du souper ?')) await act('supprimer_invite', {p_id:d.id}, 'Invité retiré'); break;
     case 'goto-repas': S.repasJour = d.j; S.tab = 'repas'; fermer(); render(); scrollTo(0,0); break;
     case 'repas-jour': S.repasJour = d.j; render(); break;
+    case 'ouvrir-heure': ouvrir('heure_souper', {j:d.j}); break;
+    case 'effacer-heure': if (await act('enregistrer_heure_souper', {p_jour:d.j, p_heure:''}, 'Heure du souper retirée')) fermer(); break;
     case 'choisir': await act('choisir_repas', {p_id:d.id}, '✅ Repas officiel choisi'); break;
     case 'retirer-choix': if (confirm('Retirer le repas officiel de ce jour ?')) await act('retirer_choix', {p_jour:d.j}, 'Choix retiré'); break;
     case 'del-sugg': if (confirm('Supprimer cette suggestion ?')) await act('supprimer_suggestion', {p_id:d.id}, 'Suggestion supprimée'); break;
     case 'sem': S.semaine = Math.max(0, S.semaine + (+d.d)); try { await refresh(); } catch(err){ toast('⚠️ ' + err.message); } break;
     case 'profil': ouvrir('profil', {m:d.m}); break;
+    case 'ajouter-membre': ouvrir('ajouter_membre', {}); break;
+    case 'supprimer-membre': if (confirm(`Supprimer ${prenom(d.m)} de la famille ?`)) await act('supprimer_membre', {p_membre:d.m}, 'Membre supprimé'); break;
     case 'reset-nip': if (confirm(`Réinitialiser le NIP de ${prenom(d.m)} ? Cette personne choisira un nouveau NIP à sa prochaine connexion.`)) await act('reinitialiser_nip', {p_membre:d.m}, '🔑 NIP réinitialisé'); break;
     case 'nip': ouvrir('nip', {}); break;
     case 'copier': copier(d.txt); break;
@@ -799,6 +955,21 @@ document.addEventListener('click', async e => {
     case 'relancer': L.membres = null; renderLogin(); break;
   }
 });
+document.addEventListener('change', async e => {
+  const input = e.target.closest('#p-e-upload');
+  if (!input || !input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = () => {
+    const field = document.getElementById('p-e');
+    if (!field) return;
+    field.value = String(reader.result || '');
+    const preview = document.getElementById('p-e-preview');
+    if (preview) preview.innerHTML = renderEmoji(field.value, 'emoji');
+    document.querySelectorAll('.emoji-option').forEach(btn => btn.classList.remove('on'));
+  };
+  reader.readAsDataURL(file);
+});
 document.addEventListener('submit', async e => {
   const f = e.target; if (!f.dataset.f) return;
   e.preventDefault();
@@ -809,11 +980,21 @@ document.addEventListener('submit', async e => {
     case 'sugg':
       ok = await act('proposer_repas', {p_jour:S.repasJour, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas officiel ajouté' : '💡 Suggestion ajoutée');
       break;
+    case 'heure-picker': {
+      const heure = `${v.heure_h}:${v.heure_m}`;
+      ok = await act('enregistrer_heure_souper', {p_jour:f.dataset.j, p_heure:heure}, `Heure du souper enregistrée : ${heure}`);
+      if (ok) fermer();
+      break;
+    }
     case 'invite':
       ok = await act('enregistrer_invite', {p_id:null, p_jour:f.dataset.j, p_nom:v.nom.trim(), p_allergies:liste(v.allergies), p_naime_pas:liste(v.naime_pas)}, '🎟️ Invité ajouté');
       if (ok) fermer(); break;
     case 'profil':
       ok = await act('enregistrer_profil', {p_membre:f.dataset.m, p_emoji:v.emoji.trim() || '🙂', p_aime:v.aime.trim(), p_naime_pas:liste(v.naime_pas), p_allergies:liste(v.allergies)}, 'Profil enregistré');
+      if (ok) fermer(); break;
+    case 'ajouter-membre':
+      if (!String(v.prenom || '').trim()) { toast('Le prénom est obligatoire.'); break; }
+      ok = await act('ajouter_membre', {p_prenom:String(v.prenom || '').trim(), p_emoji:String(v.emoji || '').trim() || '🙂', p_couleur:String(v.couleur || 'rose'), p_parent:!!v.parent}, 'Membre ajouté');
       if (ok) fermer(); break;
     case 'nip':
       if (v.n1 !== v.n2){ toast('Les deux NIP ne correspondent pas.'); break; }

@@ -82,6 +82,13 @@ create table if not exists reglages (
   valeur text
 );
 
+create table if not exists horaires_souper (
+  jour        date primary key,
+  heure       time not null,
+  modifie_par text references membres(id) on delete set null,
+  modifie_le  timestamptz not null default now()
+);
+
 create index if not exists presences_jour on presences (jour);
 create index if not exists invites_jour on invites (jour);
 create index if not exists suggestions_jour on suggestions (jour);
@@ -96,6 +103,7 @@ alter table invites     enable row level security;
 alter table suggestions enable row level security;
 alter table journal     enable row level security;
 alter table reglages    enable row level security;
+alter table horaires_souper enable row level security;
 
 -- ---------------------------------------------------------------------
 --  Données de départ (ne remplace rien si déjà présent)
@@ -251,9 +259,27 @@ begin
     'presences',   (select coalesce(jsonb_agg(to_jsonb(p)), '[]') from presences p where jour between p_debut and p_fin),
     'invites',     (select coalesce(jsonb_agg(to_jsonb(i)), '[]') from invites i where jour between p_debut and p_fin),
     'suggestions', (select coalesce(jsonb_agg(to_jsonb(s)), '[]') from suggestions s where jour between p_debut and p_fin),
+    'horaires_souper', (select coalesce(jsonb_agg(jsonb_build_object('jour', jour, 'heure', to_char(heure, 'HH24:MI'))), '[]') from horaires_souper where jour between p_debut and p_fin),
     'journal',     (select coalesce(jsonb_agg(to_jsonb(x) order by x.quand desc), '[]')
                       from (select * from journal order by quand desc limit 40) x)
   );
+end $$;
+
+create or replace function enregistrer_heure_souper(p_jeton uuid, p_jour date, p_heure text) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  if p_jour < _aujourdhui() then raise exception 'Cette journée est passée.'; end if;
+  if coalesce(trim(p_heure), '') = '' then
+    delete from horaires_souper where jour = p_jour;
+    insert into journal (par, membre, jour, texte) values (m.id, m.id, p_jour, 'Heure du souper retirée');
+    return;
+  end if;
+  if p_heure !~ '^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$' then raise exception 'Indique une heure valide.'; end if;
+  insert into horaires_souper (jour, heure, modifie_par, modifie_le)
+    values (p_jour, p_heure::time, m.id, now())
+    on conflict (jour) do update set heure = excluded.heure, modifie_par = m.id, modifie_le = now();
+  insert into journal (par, membre, jour, texte) values (m.id, m.id, p_jour, 'Heure du souper fixée à ' || p_heure);
 end $$;
 
 create or replace function enregistrer_presence(p_jeton uuid, p_membre text, p_jour date, p_champ text, p_valeur text)
@@ -385,6 +411,45 @@ begin
     values (m.id, s.propose_par, s.jour, 'Suggestion supprimée pour le ' || _jour_fr(s.jour) || ' : ' || s.titre);
 end $$;
 
+create or replace function ajouter_membre(p_jeton uuid, p_prenom text, p_emoji text, p_couleur text, p_parent boolean)
+returns text language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton); nom text; id text;
+begin
+  if not m.parent then raise exception 'Seuls les parents peuvent ajouter un membre.'; end if;
+  nom := trim(p_prenom);
+  if nom = '' then raise exception 'Le prénom est obligatoire.'; end if;
+  if p_couleur is null or p_couleur not in ('rose','bleu') then raise exception 'Couleur invalide.'; end if;
+  id := lower(regexp_replace(nom, '[^a-z0-9]+', '-', 'g'));
+  id := regexp_replace(id, '^-+|-+$', '', 'g');
+  if id = '' then id := 'membre'; end if;
+  if exists (select 1 from membres where id = id) then
+    id := id || '-' || floor(random() * 1000)::int::text;
+  end if;
+  insert into membres (id, prenom, emoji, couleur, parent, priorite, ordre, aime, naime_pas, allergies, sujet_ntfy)
+  values (id, nom, coalesce(nullif(trim(p_emoji), ''), '🙂'), p_couleur, coalesce(p_parent, false), 0,
+          (select coalesce(max(ordre), 0) + 1 from membres), '', '{}', '{}', 'repas-' || replace(gen_random_uuid()::text, '-', ''));
+  insert into journal (par, membre, texte) values (m.id, id, 'Membre ajouté : ' || nom);
+  return id;
+end $$;
+
+create or replace function supprimer_membre(p_jeton uuid, p_membre text) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton); c membres;
+begin
+  if m.id not in ('nadine','marc') then raise exception 'Seule Nadine ou Marc peut supprimer un membre.'; end if;
+  if p_membre = m.id then raise exception 'Tu ne peux pas te supprimer toi-même.'; end if;
+  select * into c from membres where id = p_membre;
+  if not found then raise exception 'Membre inconnu.'; end if;
+  delete from sessions where membre = p_membre;
+  delete from presences where membre = p_membre;
+  update invites set invite_par = m.id where invite_par = p_membre;
+  update suggestions set propose_par = m.id where propose_par = p_membre;
+  update suggestions set choisi_par = null where choisi_par = p_membre;
+  delete from journal where membre = p_membre or par = p_membre;
+  delete from membres where id = p_membre;
+  insert into journal (par, membre, texte) values (m.id, p_membre, 'Membre supprimé : ' || c.prenom);
+end $$;
+
 create or replace function enregistrer_profil(p_jeton uuid, p_membre text, p_emoji text, p_aime text, p_naime_pas text[], p_allergies text[])
 returns void language plpgsql security definer set search_path = public as $$
 declare m membres := _qui(p_jeton); c membres;
@@ -461,7 +526,10 @@ select cron.schedule('menage-repas', '30 3 * * 0',
 revoke execute on function _reglage(text), _maintenant(), _aujourdhui(), _heure_fr(timestamptz), _qui(uuid),
   _notifier(text, text, text, text, int), _choisir(membres, uuid), envoyer_rappels()
   from public, anon, authenticated;
+revoke execute on function enregistrer_heure_souper(uuid, date, text) from public, authenticated;
 grant execute on function list_membres(), connexion(text, text), deconnexion(uuid), donnees(uuid, date, date),
+  ajouter_membre(uuid, text, text, text, boolean), supprimer_membre(uuid, text),
+  enregistrer_heure_souper(uuid, date, text),
   enregistrer_presence(uuid, text, date, text, text), enregistrer_invite(uuid, uuid, date, text, text[], text[]),
   supprimer_invite(uuid, uuid), proposer_repas(uuid, date, text, text, boolean), choisir_repas(uuid, uuid),
   retirer_choix(uuid, date), supprimer_suggestion(uuid, uuid),
