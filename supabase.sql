@@ -139,6 +139,14 @@ insert into membres (id, prenom, emoji, couleur, parent, priorite, ordre, naime_
   ('raphaelle', 'Raphaelle', '👩‍🦰', 'rose', false, 0, 5, '{}')
 on conflict (id) do nothing;
 
+-- Nettoyage (re-executable) : les photos et les adresses ne sont plus permises
+-- comme emoji. Tout membre concerne retrouve un emoji neutre.
+update membres set emoji = '🙂'
+ where emoji is null
+    or trim(emoji) = ''
+    or emoji ~* '^(data:|http)'
+    or length(emoji) > 16;
+
 -- ---------------------------------------------------------------------
 --  Fonctions internes
 -- ---------------------------------------------------------------------
@@ -177,6 +185,22 @@ begin
   select mb.* into m from sessions s join membres mb on mb.id = s.membre where s.jeton = p_jeton;
   if not found then raise exception 'SESSION_INVALIDE'; end if;
   return m;
+end $$;
+
+-- Un emoji seulement : ni photo (data:...), ni adresse Internet (http...), 16 caracteres au plus.
+-- Renvoie l'emoji nettoye, ou null si rien n'a ete fourni (l'appelant garde alors l'emoji actuel).
+create or replace function _verifier_emoji(p_emoji text) returns text
+language plpgsql immutable as $$
+declare v text := nullif(trim(coalesce(p_emoji, '')), '');
+begin
+  if v is null then return null; end if;
+  if v ~* '^(data:|http)' then
+    raise exception 'Un emoji ne peut pas être une photo ni une adresse Internet. Choisis un emoji.';
+  end if;
+  if length(v) > 16 then
+    raise exception 'Cet emoji est trop long : 16 caractères au maximum.';
+  end if;
+  return v;
 end $$;
 
 create or replace function _notifier(p_sujet text, p_titre text, p_message text, p_tag text default 'fork_and_knife', p_priorite int default 3)
@@ -330,6 +354,7 @@ create or replace function enregistrer_heure_souper(p_jeton uuid, p_jour date, p
 language plpgsql security definer set search_path = public as $$
 declare m membres := _qui(p_jeton);
 begin
+  if not m.parent then raise exception 'Seuls les parents peuvent fixer l''heure du souper.'; end if;
   if p_jour < _aujourdhui() then raise exception 'Cette journée est passée.'; end if;
   if coalesce(trim(p_heure), '') = '' then
     delete from horaires_souper where jour = p_jour;
@@ -489,7 +514,7 @@ begin
     v_id := regexp_replace(v_id, '-[0-9]+$', '') || '-' || floor(random() * 1000)::int::text;
   end loop;
   insert into membres (id, prenom, emoji, couleur, parent, priorite, ordre, aime, naime_pas, allergies, sujet_ntfy)
-  values (v_id, nom, coalesce(nullif(trim(p_emoji), ''), '🙂'), p_couleur, coalesce(p_parent, false), 0,
+  values (v_id, nom, coalesce(_verifier_emoji(p_emoji), '🙂'), p_couleur, coalesce(p_parent, false), 0,
           (select coalesce(max(ordre), 0) + 1 from membres), '', '{}', '{}', 'repas-' || replace(gen_random_uuid()::text, '-', ''));
   insert into journal (par, membre, texte) values (m.id, v_id, 'Membre ajouté : ' || nom);
   return v_id;
@@ -518,7 +543,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare m membres := _qui(p_jeton); c membres;
 begin
   if m.id <> p_membre and not m.parent then raise exception 'Tu ne peux modifier que ton propre profil.'; end if;
-  update membres set emoji = coalesce(nullif(trim(p_emoji), ''), emoji), aime = coalesce(p_aime, ''),
+  update membres set emoji = coalesce(_verifier_emoji(p_emoji), emoji), aime = coalesce(p_aime, ''),
                      naime_pas = coalesce(p_naime_pas, '{}'), allergies = coalesce(p_allergies, '{}')
    where id = p_membre returning * into c;
   if not found then raise exception 'Membre inconnu.'; end if;
@@ -587,7 +612,7 @@ select cron.schedule('menage-repas', '30 3 * * 0',
 --  Droits : l'app (rôle anon) n'appelle que les fonctions publiques
 -- ---------------------------------------------------------------------
 revoke execute on function _reglage(text), _maintenant(), _aujourdhui(), _heure_fr(timestamptz), _qui(uuid),
-  _notifier(text, text, text, text, int), _choisir(membres, uuid), envoyer_rappels()
+  _notifier(text, text, text, text, int), _choisir(membres, uuid), _verifier_emoji(text), envoyer_rappels()
   from public, anon, authenticated;
 revoke execute on function enregistrer_heure_souper(uuid, date, text) from public, authenticated;
 revoke execute on function enregistrer_presence_maison(uuid, text, date, text, text) from public, authenticated;
