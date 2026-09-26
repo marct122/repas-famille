@@ -216,7 +216,7 @@ const renderEmoji = (v, alt = 'emoji') => {
 };
 const EMOJI_CHOICES = [
   '🙂','😊','😀','😄','😁','😎','🤩','😇','😜','🤠',
-  '�🏻','👶🏼','👶🏽','👶🏾','👶🏿',
+  '👶🏻','👶🏼','👶🏽','👶🏾','👶🏿',
   '👧🏻','👧🏼','👧🏽','👧🏾','👧🏿',
   '👦🏻','👦🏼','👦🏽','👦🏾','👦🏿',
   '🧑🏻','🧑🏼','🧑🏽','🧑🏾','🧑🏿',
@@ -835,8 +835,9 @@ function vueAccueil(){
   // « Répondu » veut dire une vraie réponse (st.maj). Passé 11h, une absence
   // de réponse devient « absent » d'office : ce n'est pas une réponse donnée.
   const manque = !statutSouper(t, id).maj || !statutLunch(dm, id).maj || !statutSouper(dm, id).maj;
+  // Avant la limite, le rappel ne sert plus une fois les trois réponses données.
   const bandeau = l.h < HL()
-    ? `<div class="banner warn">⏳ <b>Réponds avant ${HL()}h</b> : ton souper de ce soir et ton lunch de demain.</div>`
+    ? (manque ? `<div class="banner warn">⏳ <b>Réponds avant ${HL()}h</b> : ton souper de ce soir et ton lunch de demain.</div>` : '')
     : `<div class="banner info">🕚 Il est passé ${HL()}h. Sans réponse, une personne est comptée absente au souper et sans lunch demain. Tu peux encore changer ta réponse : l'heure du changement sera notée.</div>`;
   return `${enTete(`Bonjour ${esc(moi().prenom)} ${renderEmoji(moi().emoji, moi().prenom)}`, cap(jourLong(t)))}${bandeau}
     ${manque || S.modif ? carteQuestions(t, dm, id, manque) : carteRepondu(t, dm, id)}
