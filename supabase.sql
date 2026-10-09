@@ -68,6 +68,16 @@ create table if not exists suggestions (
   choisi_le   timestamptz
 );
 
+-- Votes sur les suggestions : la clé (jour, membre) garantit un seul vote
+-- par personne et par jour. Les votes suivent la suggestion et le membre.
+create table if not exists votes (
+  jour       date not null,
+  membre     text not null references membres(id) on delete cascade,
+  suggestion uuid not null references suggestions(id) on delete cascade,
+  quand      timestamptz not null default now(),
+  primary key (jour, membre)
+);
+
 create table if not exists journal (
   id     bigserial primary key,
   quand  timestamptz not null default now(),
@@ -104,6 +114,7 @@ create table if not exists presence_maison (
 create index if not exists presences_jour on presences (jour);
 create index if not exists invites_jour on invites (jour);
 create index if not exists suggestions_jour on suggestions (jour);
+create index if not exists votes_suggestion on votes (suggestion);
 create index if not exists journal_quand on journal (quand desc);
 create index if not exists presence_maison_jour on presence_maison (jour);
 
@@ -114,6 +125,7 @@ alter table sessions    enable row level security;
 alter table presences   enable row level security;
 alter table invites     enable row level security;
 alter table suggestions enable row level security;
+alter table votes       enable row level security;
 alter table journal     enable row level security;
 alter table reglages    enable row level security;
 alter table horaires_souper enable row level security;
@@ -297,6 +309,7 @@ begin
     'presences',   (select coalesce(jsonb_agg(to_jsonb(p)), '[]') from presences p where jour between p_debut and p_fin),
     'invites',     (select coalesce(jsonb_agg(to_jsonb(i)), '[]') from invites i where jour between p_debut and p_fin),
     'suggestions', (select coalesce(jsonb_agg(to_jsonb(s)), '[]') from suggestions s where jour between p_debut and p_fin),
+    'votes',       (select coalesce(jsonb_agg(to_jsonb(v)), '[]') from votes v where jour between p_debut and p_fin),
     'horaires_souper', (select coalesce(jsonb_agg(jsonb_build_object('jour', jour, 'heure', to_char(heure, 'HH24:MI'))), '[]') from horaires_souper where jour between p_debut and p_fin),
     'presence_maison', (select coalesce(jsonb_agg(jsonb_build_object('jour', jour, 'membre', membre,
                           'arrivee', case when arrivee is null then null else to_char(arrivee, 'HH24:MI') end,
@@ -497,6 +510,33 @@ begin
     values (m.id, s.propose_par, s.jour, 'Suggestion supprimée pour le ' || _jour_fr(s.jour) || ' : ' || s.titre);
 end $$;
 
+-- Vote : tout membre, un seul vote par jour (voter ailleurs déplace le vote).
+-- Le vote se ferme dès qu'un parent a choisi le repas officiel de ce jour.
+create or replace function voter_repas(p_jeton uuid, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton); s suggestions;
+begin
+  select * into s from suggestions where id = p_id;
+  if not found then raise exception 'Suggestion introuvable.'; end if;
+  if s.jour < _aujourdhui() then raise exception 'Cette journée est passée.'; end if;
+  if exists (select 1 from suggestions where jour = s.jour and choisi) then
+    raise exception 'Le repas officiel de ce jour est déjà choisi : le vote est fermé.';
+  end if;
+  insert into votes (jour, membre, suggestion) values (s.jour, m.id, s.id)
+    on conflict (jour, membre) do update set suggestion = excluded.suggestion, quand = now();
+end $$;
+
+create or replace function retirer_vote(p_jeton uuid, p_jour date) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  if p_jour < _aujourdhui() then raise exception 'Cette journée est passée.'; end if;
+  if exists (select 1 from suggestions where jour = p_jour and choisi) then
+    raise exception 'Le repas officiel de ce jour est déjà choisi : le vote est fermé.';
+  end if;
+  delete from votes where jour = p_jour and membre = m.id;
+end $$;
+
 create or replace function ajouter_membre(p_jeton uuid, p_prenom text, p_emoji text, p_couleur text, p_parent boolean)
 returns text language plpgsql security definer set search_path = public as $$
 declare m membres := _qui(p_jeton); nom text; v_id text;
@@ -621,7 +661,7 @@ grant execute on function list_membres(), connexion(text, text), deconnexion(uui
   enregistrer_heure_souper(uuid, date, text), enregistrer_presence_maison(uuid, text, date, text, text),
   enregistrer_presence(uuid, text, date, text, text), enregistrer_invite(uuid, uuid, date, text, text[], text[]),
   supprimer_invite(uuid, uuid), proposer_repas(uuid, date, text, text, boolean), choisir_repas(uuid, uuid),
-  retirer_choix(uuid, date), supprimer_suggestion(uuid, uuid),
+  retirer_choix(uuid, date), supprimer_suggestion(uuid, uuid), voter_repas(uuid, uuid), retirer_vote(uuid, date),
   enregistrer_profil(uuid, text, text, text, text[], text[]), changer_nip(uuid, text), reinitialiser_nip(uuid, text)
   to anon;
 

@@ -112,6 +112,8 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .sugg{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
 .sugg.chosen{border-color:var(--ok);background:var(--ok-bg)}
 .sugg .flag{margin-top:6px}
+.vote{border-top:1px solid var(--line);padding:8px 0 2px;margin-top:8px}
+.vote-t{font-weight:700}
 .card.done{border:1.5px solid var(--ok);background:var(--ok-bg)}
 .card.done .btn.ok{background:var(--ok);color:#fff}
 .hdr{font-weight:800;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
@@ -355,11 +357,12 @@ const SEED = [
 ];
 const Demo = (() => {
   const K = 'repas-demo-v1';
-  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], horaires_souper:[], presence_maison:[], journal:[]});
+  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], votes:[], horaires_souper:[], presence_maison:[], journal:[]});
   const hydrate = () => {
     const cur = LS.get(K) || seed();
     cur.horaires_souper = cur.horaires_souper || [];
     cur.presence_maison = cur.presence_maison || [];
+    cur.votes = cur.votes || [];
     const byId = Object.fromEntries(SEED.map(m => [m.id, m]));
     cur.membres = (cur.membres || []).map(m => {
       const base = byId[m.id];
@@ -431,6 +434,7 @@ const Demo = (() => {
       db.invites = db.invites.filter(x => x.invite_par !== p_membre);
       db.suggestions = db.suggestions.map(s => ({...s, propose_par: s.propose_par === p_membre ? m.id : s.propose_par, choisi_par: s.choisi_par === p_membre ? null : s.choisi_par}))
         .filter(s => !(s.propose_par === p_membre && s.choisi_par === null && s.choisi));
+      db.votes = db.votes.filter(v => v.membre !== p_membre && db.suggestions.some(s => s.id === v.suggestion));
       db.journal = db.journal.filter(x => x.par !== p_membre && x.membre !== p_membre);
       db.membres = db.membres.filter(x => x.id !== p_membre);
       log(m.id, p_membre, null, `Membre supprimé : ${c.prenom}`);
@@ -447,7 +451,7 @@ const Demo = (() => {
       const dans = x => x.jour >= p_debut && x.jour <= p_fin;
       return {moi:m.id, heure_limite:11, heure_rappel:10, sujet_parents:m.parent ? 'repas-demo-parents' : null,
         membres:db.membres.map(x => ({...x, nip:undefined, sujet_ntfy:x.id === m.id ? x.sujet_ntfy : null})),
-        presences:db.presences.filter(dans), invites:db.invites.filter(dans), suggestions:db.suggestions.filter(dans),
+        presences:db.presences.filter(dans), invites:db.invites.filter(dans), suggestions:db.suggestions.filter(dans), votes:db.votes.filter(dans),
         horaires_souper:db.horaires_souper.filter(dans), presence_maison:db.presence_maison.filter(dans),
         journal:db.journal.slice(0,40)};
     },
@@ -548,7 +552,24 @@ const Demo = (() => {
       if (s.choisi && !m.parent) err('Ce repas est déjà choisi; seul un parent peut le retirer.');
       if (s.choisi && prioDe(s.choisi_par) > m.priorite) err(`Le choix de ${M(s.choisi_par).prenom} a priorité.`);
       db.suggestions = db.suggestions.filter(x => x.id !== p_id);
+      db.votes = db.votes.filter(v => v.suggestion !== p_id);
       log(m.id, s.propose_par, s.jour, `Suggestion supprimée pour le ${jourLong(s.jour)} : ${s.titre}`);
+      return null;
+    },
+    // Même règle que supabase.sql : un vote par personne et par jour, fermé dès qu'un repas officiel est choisi.
+    voter_repas({p_jeton, p_id}){
+      const m = qui(p_jeton); const s = db.suggestions.find(x => x.id === p_id); if (!s) err('Suggestion introuvable.');
+      if (s.jour < today()) err('Cette journée est passée.');
+      if (db.suggestions.some(x => x.jour === s.jour && x.choisi)) err('Le repas officiel de ce jour est déjà choisi : le vote est fermé.');
+      db.votes = db.votes.filter(v => !(v.jour === s.jour && v.membre === m.id));
+      db.votes.push({jour:s.jour, membre:m.id, suggestion:s.id, quand:now()});
+      return null;
+    },
+    retirer_vote({p_jeton, p_jour}){
+      const m = qui(p_jeton);
+      if (p_jour < today()) err('Cette journée est passée.');
+      if (db.suggestions.some(x => x.jour === p_jour && x.choisi)) err('Le repas officiel de ce jour est déjà choisi : le vote est fermé.');
+      db.votes = db.votes.filter(v => !(v.jour === p_jour && v.membre === m.id));
       return null;
     },
     enregistrer_profil({p_jeton, p_membre, p_emoji, p_aime, p_naime_pas, p_allergies}){
@@ -586,6 +607,10 @@ const presenceMaison = (j, id) => (S.data.presence_maison || []).find(p => p.jou
 const invitesDu = j => S.data.invites.filter(g => g.jour === j).sort((a,b) => a.cree < b.cree ? -1 : 1);
 const suggDu = j => S.data.suggestions.filter(s => s.jour === j).sort((a,b) => a.cree < b.cree ? -1 : 1);
 const repasChoisi = j => S.data.suggestions.find(s => s.jour === j && s.choisi);
+// Votes : qui a voté pour une suggestion (dans l'ordre de la famille), et mon vote du jour.
+const votantsDe = id => S.data.membres.filter(m => (S.data.votes || []).some(v => v.suggestion === id && v.membre === m.id));
+const monVote = j => (S.data.votes || []).find(v => v.jour === j && v.membre === S.data.moi);
+const voteOuvert = j => j >= today() && !repasChoisi(j);
 const heureSouper = j => (S.data.horaires_souper || []).find(x => x.jour === j)?.heure || '';
 const peutModifierMaison = id => id === S.data.moi || ['nadine','marc'].includes(S.data.moi);
 
@@ -797,6 +822,27 @@ function resumeLunch(j){
   return `<div class="sub-h">🥪 Lunchs</div>${l.join('')}`;
 }
 
+// Ligne des votes d'une suggestion : qui en a envie, et mon bouton tant que le vote est ouvert.
+function ligneVotes(j, s){
+  const qui = votantsDe(s.id), mien = monVote(j);
+  const noms = qui.length ? `👍 <b>${qui.length}</b> ${qui.map(m => nomTag(m)).join(' ')}` : '<span class="small">Pas encore de vote</span>';
+  let bouton = '';
+  if (voteOuvert(j)){
+    if (mien && mien.suggestion === s.id) bouton = `<button type="button" class="btn ghost sm" data-a="retirer-vote" data-j="${j}">Retirer mon vote</button>`;
+    else bouton = `<button type="button" class="btn ok sm" data-a="voter" data-id="${s.id}">👍 ${mien ? 'Plutôt celui-ci' : "J'en ai envie"}</button>`;
+  }
+  return `<div class="line">${noms}</div>${bouton ? `<div class="actions">${bouton}</div>` : ''}`;
+}
+// Accueil : tant que le repas n'est pas choisi, chaque suggestion avec ses votes et le bouton.
+// Une fois le repas choisi, le vote est fermé : on montre seulement qui voulait quoi.
+function votesAccueil(j, sug){
+  if (!sug.length) return '';
+  if (repasChoisi(j)){
+    const avec = sug.filter(s => votantsDe(s.id).length);
+    return avec.map(s => `<div class="line small">👍 ${esc(s.titre)} : ${esc(votantsDe(s.id).map(m => m.prenom).join(', '))}</div>`).join('');
+  }
+  return sug.map(s => `<div class="vote"><div class="vote-t">${esc(s.titre)}</div>${ligneVotes(j, s)}</div>`).join('');
+}
 /* Une carte de jour, en résumé (ce soir / demain) */
 function carteJourAccueil(j, titre, avecLunch){
   const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
@@ -819,6 +865,7 @@ function carteJourAccueil(j, titre, avecLunch){
     <div class="hdr">${esc(titre)}</div>
     ${avecLunch ? `${resumeLunch(j)}<div class="sep"></div><div class="sub-h">🍽️ Souper</div>` : ''}
     ${repas}
+    ${votesAccueil(j, sug)}
     ${champHeureSouper(j, heureSouper(j))}
     ${lignes.join('')}
     ${phrasesAlertes(j, txt)}
@@ -910,6 +957,7 @@ function carteSugg(j, s, parent){
     <div class="meal-t">${esc(s.titre)}</div>${s.ingredients ? `<div class="small">${esc(s.ingredients)}</div>` : ''}
     <div class="small">Suggéré par <b>${esc(prenom(s.propose_par))}</b> ${quand(s.cree)}${s.choisi ? ` · choisi par <b>${esc(prenom(s.choisi_par))}</b> ${quand(s.choisi_le)}` : ''}</div>
     <div style="margin-top:6px">${resumeFlags(j, texteRepas(s))}</div>
+    ${ligneVotes(j, s)}
     ${boutons ? `<div class="actions">${boutons}</div>` : ''}</div>`;
 }
 function vueFamille(){
@@ -1191,6 +1239,8 @@ document.addEventListener('click', async e => {
     case 'ouvrir-heure': ouvrir('heure_souper', {j:d.j}); break;
     case 'effacer-heure': if (await act('enregistrer_heure_souper', {p_jour:d.j, p_heure:''}, 'Heure du souper retirée')) fermer(); break;
     case 'choisir': await act('choisir_repas', {p_id:d.id}, '✅ Repas officiel choisi'); break;
+    case 'voter': el.disabled = true; await act('voter_repas', {p_id:d.id}, '👍 Vote enregistré'); el.disabled = false; break;
+    case 'retirer-vote': el.disabled = true; await act('retirer_vote', {p_jour:d.j}, 'Vote retiré'); el.disabled = false; break;
     case 'retirer-choix': if (confirm('Retirer le repas officiel de ce jour ?')) await act('retirer_choix', {p_jour:d.j}, 'Choix retiré'); break;
     case 'del-sugg': if (confirm('Supprimer cette suggestion ?')) await act('supprimer_suggestion', {p_id:d.id}, 'Suggestion supprimée'); break;
     case 'sem': S.semaine = Math.max(0, S.semaine + (+d.d)); try { await refresh(); } catch(err){ toast('⚠️ ' + err.message); } break;
