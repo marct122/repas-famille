@@ -123,7 +123,7 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .sugg-btn{margin-bottom:10px}
 .card.done{border:1.5px solid var(--ok);background:var(--ok-bg)}
 .card.done .btn.ok{background:var(--ok);color:#fff}
-.hdr{font-weight:800;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.hdr{font-weight:800;font-size:1.2rem;color:var(--ink);margin-bottom:8px}
 .sub-h{font-weight:700;margin:4px 0 6px}
 .line{padding:4px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .chev{color:var(--muted);font-weight:700}
@@ -257,6 +257,8 @@ const _fl = new Intl.DateTimeFormat('fr-CA', {timeZone:'UTC', weekday:'long', da
 const _fs = new Intl.DateTimeFormat('fr-CA', {timeZone:'UTC', weekday:'short'});
 const jourLong = iso => _fl.format(new Date(iso + 'T12:00:00Z'));
 const jourAbr = iso => _fs.format(new Date(iso + 'T12:00:00Z')).replace('.', '');
+const _fw = new Intl.DateTimeFormat('fr-CA', {timeZone:'UTC', weekday:'long'});
+const jourSemaine = iso => _fw.format(new Date(iso + 'T12:00:00Z')); // « vendredi »
 const jourNum = iso => +iso.slice(8,10);
 function heure(ts){ if (!ts) return ''; const l = local(ts); return `${l.h}h${String(l.min).padStart(2,'0')}`; }
 function relJour(iso){
@@ -877,7 +879,7 @@ function carteJourAccueil(j, titre, avecLunch){
   if (g.attente.length) lignes.push(`<div class="line small late">⏳ ${esc(g.attente.map(m => m.prenom).join(', '))} ${g.attente.length > 1 ? "n'ont" : "n'a"} pas encore répondu</div>`);
 
   return `<div class="card">
-    <div class="hdr">${esc(titre)}</div>
+    <div class="hdr">${esc(titre)} (${esc(jourSemaine(j))})</div>
     ${avecLunch ? `${resumeLunch(j)}<div class="sep"></div><div class="sub-h">🍽️ Souper</div>` : ''}
     ${zoneRepasAccueil(j, r, sug)}
     ${champHeureSouper(j, heureSouper(j))}
