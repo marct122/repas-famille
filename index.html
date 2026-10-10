@@ -114,6 +114,9 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .sugg .flag{margin-top:6px}
 .vote{border-top:1px solid var(--line);padding:8px 0 2px;margin-top:8px}
 .vote-t{font-weight:700}
+.vote-zone{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
+.vote-zone-t{font-weight:800;font-size:1.05rem;margin-bottom:2px}
+.sugg-btn{margin-bottom:10px}
 .card.done{border:1.5px solid var(--ok);background:var(--ok-bg)}
 .card.done .btn.ok{background:var(--ok);color:#fff}
 .hdr{font-weight:800;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
@@ -833,24 +836,28 @@ function ligneVotes(j, s){
   }
   return `<div class="line">${noms}</div>${bouton ? `<div class="actions">${bouton}</div>` : ''}`;
 }
-// Accueil : tant que le repas n'est pas choisi, chaque suggestion avec ses votes et le bouton.
-// Une fois le repas choisi, le vote est fermé : on montre seulement qui voulait quoi.
-function votesAccueil(j, sug){
-  if (!sug.length) return '';
-  if (repasChoisi(j)){
+// Accueil : zone du repas d'une carte de jour.
+// - Repas officiel choisi : la boîte verte, et qui voulait quoi (le vote est fermé, aucun bouton).
+// - Sinon : le bloc « Indique ta préférence » (s'il y a des suggestions), puis le bouton qui ouvre
+//   la fenêtre de suggestion. L'heure du souper vient juste après, dans carteJourAccueil.
+function zoneRepasAccueil(j, r, sug){
+  if (r){
     const avec = sug.filter(s => votantsDe(s.id).length);
-    return avec.map(s => `<div class="line small">👍 ${esc(s.titre)} : ${esc(votantsDe(s.id).map(m => m.prenom).join(', '))}</div>`).join('');
+    return `<div class="meal"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}</div>`
+      + avec.map(s => `<div class="line small">👍 ${esc(s.titre)} : ${esc(votantsDe(s.id).map(m => m.prenom).join(', '))}</div>`).join('');
   }
-  return sug.map(s => `<div class="vote"><div class="vote-t">${esc(s.titre)}</div>${ligneVotes(j, s)}</div>`).join('');
+  const bouton = j >= today() ? `<button type="button" class="btn ghost full sugg-btn" data-a="suggerer" data-j="${j}">${sug.length ? 'Faire une autre suggestion de repas' : 'Faire une suggestion de repas'}</button>` : '';
+  if (!sug.length) return bouton;
+  return `<div class="vote-zone">
+      <div class="vote-zone-t">Indique ta préférence</div>
+      ${sug.length > 1 ? '<div class="small">Comme il y a plusieurs suggestions de repas, nous devons procéder par vote</div>' : ''}
+      ${sug.map(s => `<div class="vote"><div class="vote-t">${esc(s.titre)}</div>${ligneVotes(j, s)}</div>`).join('')}
+    </div>${bouton}`;
 }
 /* Une carte de jour, en résumé (ce soir / demain) */
 function carteJourAccueil(j, titre, avecLunch){
   const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
   const txt = r ? texteRepas(r) : '';
-  let repas;
-  if (r) repas = `<div class="meal"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}</div>`;
-  else if (sug.length) repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">🤔 <b>Repas à décider</b> — ${sug.length} suggestion${sug.length > 1 ? 's' : ''} <span class="chev">›</span></div>`;
-  else repas = `<div class="meal pending tap" data-a="goto-repas" data-j="${j}">🍽️ <b>Aucun repas prévu</b> — suggérer un repas <span class="chev">›</span></div>`;
 
   const g = {present:[], attente:[], absent:[]};
   for (const m of S.data.membres){ const v = statutSouper(j, m.id).v; g[v === 'auto' ? 'absent' : v].push(m); }
@@ -864,8 +871,7 @@ function carteJourAccueil(j, titre, avecLunch){
   return `<div class="card">
     <div class="hdr">${esc(titre)}</div>
     ${avecLunch ? `${resumeLunch(j)}<div class="sep"></div><div class="sub-h">🍽️ Souper</div>` : ''}
-    ${repas}
-    ${votesAccueil(j, sug)}
+    ${zoneRepasAccueil(j, r, sug)}
     ${champHeureSouper(j, heureSouper(j))}
     ${lignes.join('')}
     ${phrasesAlertes(j, txt)}
@@ -934,15 +940,20 @@ function vueRepas(){
       <div class="small">Présents ou en attente : ${conv.length ? esc(conv.map(c => c.label).join(', ')) : 'personne pour l\'instant'}</div>
       ${sug.length ? sug.map(s => carteSugg(j, s, parent)).join('') : '<p class="muted">Aucune suggestion pour ce jour.</p>'}
     </div>
-    <div class="card"><h3>💡 ${parent ? 'Faire une suggestion de repas' : 'Faire une suggestion de repas'}</h3>
-      <form data-f="sugg">
+    <div class="card"><h3>💡 Faire une suggestion de repas</h3>${formSuggestion(j)}</div>`;
+}
+// Le formulaire de suggestion, partagé par la page Repas et la fenêtre ouverte depuis l'accueil.
+// Il porte son jour (data-j) : l'envoi ne dépend donc pas du jour choisi dans la page Repas.
+function formSuggestion(j){
+  const parent = moi().parent;
+  return `<form data-f="sugg" data-j="${j}">
         <label class="f" for="s-t">Repas</label><input type="text" id="s-t" name="titre" required maxlength="80" placeholder="Ex. : Tacos au poulet" autocomplete="off">
         <label class="f" for="s-i">Ingrédients principaux</label><input type="text" id="s-i" name="ingredients" maxlength="200" placeholder="Ex. : poulet, tortillas, fromage, salsa" autocomplete="off">
         <div class="hint">Les ingrédients servent aux alertes 🚩 et ⚠️ selon les profils.</div>
-        <div id="apercu" style="margin-top:8px"></div>
+        <div class="apercu" style="margin-top:8px"></div>
         ${parent ? '<label class="chk"><input type="checkbox" name="choisir"> En faire directement le repas officiel</label>' : ''}
         <button class="btn full" style="margin-top:10px">${parent ? 'Ajouter' : 'Suggérer'}</button>
-      </form></div>`;
+      </form>`;
 }
 function carteSugg(j, s, parent){
   const cp = s.choisi ? membre(s.choisi_par) : null, m = moi();
@@ -1056,6 +1067,10 @@ const FEUILLES = {
     return {titre:esc(cap(jourLong(j))),
       corps:`${j >= today() ? `<div class="card"><h3>✋ Mes réponses</h3>${blocReponse(id, j, 'souper', 'Mon souper')}${blocReponse(id, j, 'lunch', 'Mon lunch')}</div>` : ''}${carteSouper(j)}${carteLunch(j)}`};
   },
+  suggestion({j}){
+    return {titre:`💡 Suggestion de repas — ${esc(jourLong(j))}`, form:true,
+      corps:`<div class="card">${formSuggestion(j)}</div>`};
+  },
   invite({j}){
     return {titre:`🎟️ Invité au souper — ${esc(jourLong(j))}`, form:true,
       corps:`<div class="card"><form data-f="invite" data-j="${j}">
@@ -1150,7 +1165,7 @@ function render(){
   $('#app').innerHTML = VUES[S.tab]();
   $('#nav').hidden = false;
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-  if (S.sheet && !['invite','profil','nip','presence_maison','mes_heures'].includes(S.sheet.type)) dessinerFeuille();
+  if (S.sheet && !['invite','profil','nip','presence_maison','mes_heures','suggestion'].includes(S.sheet.type)) dessinerFeuille();
 }
 async function refresh(){
   const t = today();
@@ -1233,6 +1248,7 @@ document.addEventListener('click', async e => {
     case 'replier-reponses': S.modif = false; render(); break;
     case 'day': ouvrir('day', {j:d.j}); break;
     case 'invite': ouvrir('invite', {j:d.j}); break;
+    case 'suggerer': ouvrir('suggestion', {j:d.j}); break;
     case 'del-invite': if (confirm('Retirer cet invité du souper ?')) await act('supprimer_invite', {p_id:d.id}, 'Invité retiré'); break;
     case 'goto-repas': S.repasJour = d.j; S.tab = 'repas'; fermer(); render(); scrollTo(0,0); break;
     case 'repas-jour': S.repasJour = d.j; render(); break;
@@ -1268,7 +1284,8 @@ document.addEventListener('submit', async e => {
   let ok = false;
   switch (f.dataset.f){
     case 'sugg':
-      ok = await act('proposer_repas', {p_jour:S.repasJour, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas officiel ajouté' : '💡 Suggestion ajoutée');
+      ok = await act('proposer_repas', {p_jour:f.dataset.j, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas officiel ajouté' : '💡 Suggestion ajoutée');
+      if (ok && S.sheet && S.sheet.type === 'suggestion') fermer();
       break;
     case 'heure-picker': {
       const heure = `${v.heure_h}:${v.heure_m}`;
@@ -1319,8 +1336,8 @@ document.addEventListener('submit', async e => {
 document.addEventListener('input', e => {
   const f = e.target.form;
   if (!f || f.dataset.f !== 'sugg') return;
-  const txt = `${f.titre.value} ${f.ingredients.value}`.trim();
-  $('#apercu').innerHTML = txt ? resumeFlags(S.repasJour, txt) : '';
+  const txt = `${f.elements.titre.value} ${f.elements.ingredients.value}`.trim();
+  f.querySelector('.apercu').innerHTML = txt ? resumeFlags(f.dataset.j, txt) : '';
 });
 document.addEventListener('keydown', e => {
   if (!S.sess && L.choisi){
@@ -1333,7 +1350,7 @@ document.addEventListener('keydown', e => {
 function occupe(){
   const a = document.activeElement;
   if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return true;
-  if (S.sheet && ['invite','profil','nip','presence_maison','mes_heures'].includes(S.sheet.type)) return true;
+  if (S.sheet && ['invite','profil','nip','presence_maison','mes_heures','suggestion'].includes(S.sheet.type)) return true;
   return [...document.querySelectorAll('#app input[type=text]')].some(i => i.value.trim());
 }
 setInterval(() => { if (S.sess && document.visibilityState === 'visible' && !occupe()) refresh().catch(() => {}); }, 60000);
