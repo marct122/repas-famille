@@ -114,6 +114,10 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .sugg .flag{margin-top:6px}
 .vote{border-top:1px solid var(--line);padding:8px 0 2px;margin-top:8px}
 .vote-t{font-weight:700}
+.vote-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.vote-info{flex:1 1 140px;min-width:0}
+.vote-btns{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-left:auto}
+.btn.neutre{background:var(--line);color:var(--ink)}
 .vote-zone{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
 .vote-zone-t{font-weight:800;font-size:1.05rem;margin-bottom:2px}
 .sugg-btn{margin-bottom:10px}
@@ -825,16 +829,20 @@ function resumeLunch(j){
   return `<div class="sub-h">🥪 Lunchs</div>${l.join('')}`;
 }
 
-// Ligne des votes d'une suggestion : qui en a envie, et mon bouton tant que le vote est ouvert.
-function ligneVotes(j, s){
+// Ligne des votes d'une suggestion : à gauche, le titre (facultatif) et qui en a envie ;
+// à droite, mes boutons tant que le vote est ouvert. Les boutons passent à la ligne,
+// alignés à droite, s'ils ne tiennent pas à côté (téléphone étroit).
+// - Pas mon vote : « Mon choix » gris pâle (un toucher vote, ou déplace mon vote ici).
+// - Mon vote : « 👍 Mon choix » vert, qui ne fait rien au toucher, puis « Retirer mon vote ».
+function ligneVotes(j, s, titre = ''){
   const qui = votantsDe(s.id), mien = monVote(j);
   const noms = qui.length ? `👍 <b>${qui.length}</b> ${qui.map(m => nomTag(m)).join(' ')}` : '<span class="small">Pas encore de vote</span>';
-  let bouton = '';
+  let boutons = '';
   if (voteOuvert(j)){
-    if (mien && mien.suggestion === s.id) bouton = `<button type="button" class="btn ghost sm" data-a="retirer-vote" data-j="${j}">Retirer mon vote</button>`;
-    else bouton = `<button type="button" class="btn ok sm" data-a="voter" data-id="${s.id}">👍 ${mien ? 'Plutôt celui-ci' : "J'en ai envie"}</button>`;
+    if (mien && mien.suggestion === s.id) boutons = `<button type="button" class="btn ok sm" aria-pressed="true">👍 Mon choix</button><button type="button" class="btn neutre sm" data-a="retirer-vote" data-j="${j}">Retirer mon vote</button>`;
+    else boutons = `<button type="button" class="btn neutre sm" aria-pressed="false" data-a="voter" data-id="${s.id}">Mon choix</button>`;
   }
-  return `<div class="line">${noms}</div>${bouton ? `<div class="actions">${bouton}</div>` : ''}`;
+  return `<div class="vote-row"><div class="vote-info">${titre}<div class="line">${noms}</div></div>${boutons ? `<div class="vote-btns">${boutons}</div>` : ''}</div>`;
 }
 // Accueil : zone du repas d'une carte de jour.
 // - Repas officiel choisi : la boîte verte, et qui voulait quoi (le vote est fermé, aucun bouton).
@@ -851,7 +859,7 @@ function zoneRepasAccueil(j, r, sug){
   return `<div class="vote-zone">
       <div class="vote-zone-t">Indique ta préférence</div>
       ${sug.length > 1 ? '<div class="small">Comme il y a plusieurs suggestions de repas, nous devons procéder par vote</div>' : ''}
-      ${sug.map(s => `<div class="vote"><div class="vote-t">${esc(s.titre)}</div>${ligneVotes(j, s)}</div>`).join('')}
+      ${sug.map(s => `<div class="vote">${ligneVotes(j, s, `<div class="vote-t">${esc(s.titre)}</div>`)}</div>`).join('')}
     </div>${bouton}`;
 }
 /* Une carte de jour, en résumé (ce soir / demain) */
