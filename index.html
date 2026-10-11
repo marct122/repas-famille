@@ -177,6 +177,16 @@ nav#nav button.on{color:var(--accent);font-weight:700}
 .sheet-h{display:flex;align-items:center;gap:8px;font-size:1.08rem;margin-bottom:6px}
 .sheet-h b{flex:1}
 .x{background:var(--card);border:1px solid var(--line);border-radius:999px;width:36px;height:36px;cursor:pointer}
+/* Fenêtre de confirmation de l'app (au-dessus des fenêtres du bas) */
+.dlg{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:16px}
+.dlg[hidden]{display:none}
+.dlg-bg{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.dlg-card{position:relative;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:18px 16px 14px;width:100%;max-width:400px}
+.dlg-t{display:flex;align-items:center;gap:8px;font-weight:800;font-size:1.1rem;margin-bottom:8px}
+.dlg-t svg{color:var(--no);flex:none}
+.dlg-m{line-height:1.45}
+.dlg-b{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:16px}
+.dlg-b .btn{min-width:110px}
 #toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1d2433;color:#fff;padding:10px 16px;border-radius:12px;width:max-content;max-width:min(92vw,520px);z-index:30;opacity:0;pointer-events:none;transition:opacity .2s;font-size:.92rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 #toast.on{opacity:1}
 .login{text-align:center;padding-top:24px}
@@ -206,6 +216,11 @@ nav#nav button.on{color:var(--accent);font-weight:700}
   <button data-a="tab" data-tab="moi"><span>⚙️</span>Moi</button>
 </nav>
 <div id="sheet" class="sheet" hidden><div class="sheet-bg" data-a="close"></div><div class="sheet-card" id="sheet-card"></div></div>
+<div id="dialogue" class="dlg" hidden><div class="dlg-bg" data-dlg="non"></div>
+  <div class="dlg-card" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t" aria-describedby="dlg-m">
+    <div class="dlg-t" id="dlg-t"></div><div class="dlg-m" id="dlg-m"></div>
+    <div class="dlg-b"><button type="button" class="btn neutre" data-dlg="non">Annuler</button><button type="button" class="btn ghost" data-dlg="oui">OK</button></div>
+  </div></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 'use strict';
@@ -851,7 +866,8 @@ function resumeLunch(j){
 // - Pas mon vote : « Mon choix » gris pâle (un toucher vote, ou déplace mon vote ici).
 // - Mon vote : « 👍 Mon choix » vert, qui ne fait rien au toucher, puis « Retirer mon vote ».
 // masquerVide : sur la carte du souper décidé (page Repas), rien si personne n'a voté.
-function ligneVotes(j, s, titre = '', masquerVide = false){
+// extra : boutons ajoutés à droite de ceux du vote (accueil : « Décider ce repas » et la poubelle, parents seulement).
+function ligneVotes(j, s, titre = '', masquerVide = false, extra = ''){
   const qui = votantsDe(s.id), mien = monVote(j);
   if (masquerVide && !qui.length && !voteOuvert(j)) return '';
   const noms = qui.length ? `👍 <b>${qui.length}</b> ${qui.map(m => nomTag(m)).join(' ')}` : '<span class="small">Pas encore de vote</span>';
@@ -860,6 +876,7 @@ function ligneVotes(j, s, titre = '', masquerVide = false){
     if (mien && mien.suggestion === s.id) boutons = `<button type="button" class="btn ok sm" aria-pressed="true">👍 Mon choix</button><button type="button" class="btn neutre sm" data-a="retirer-vote" data-j="${j}">Retirer mon vote</button>`;
     else boutons = `<button type="button" class="btn neutre sm" aria-pressed="false" data-a="voter" data-id="${s.id}">Mon choix</button>`;
   }
+  boutons += extra;
   return `<div class="vote-row"><div class="vote-info">${titre}<div class="line">${noms}</div></div>${boutons ? `<div class="vote-btns">${boutons}</div>` : ''}</div>`;
 }
 // Accueil : zone du repas d'une carte de jour.
@@ -877,8 +894,17 @@ function zoneRepasAccueil(j, r, sug){
   return `<div class="vote-zone">
       <div class="vote-zone-t">Indique ta préférence</div>
       ${sug.length > 1 ? '<div class="small">Comme il y a plusieurs suggestions de repas, nous devons procéder par vote</div>' : ''}
-      ${sug.map(s => `<div class="vote">${ligneVotes(j, s, `<div class="vote-t">${esc(s.titre)}</div>`)}</div>`).join('')}
+      ${sug.map(s => `<div class="vote">${ligneVotes(j, s, `<div class="vote-t">${esc(s.titre)}</div>`, false, parentsAccueil(s))}</div>`).join('')}
     </div>${bouton}`;
+}
+// Poubelle en métal dessinée par l'app : l'emoji 🗑️ change d'allure d'un appareil à l'autre.
+const ICONE_POUBELLE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14"/><path d="M10 10v7M14 10v7"/></svg>';
+const boutonPoubelle = s => `<button type="button" class="btn-icone" data-a="del-sugg" data-id="${s.id}" aria-label="Supprimer ${esc(s.titre)}">${ICONE_POUBELLE}</button>`;
+// Accueil, parents seulement (le bloc n'existe que tant qu'aucun souper n'est décidé) :
+// « Décider ce repas » puis la poubelle, mêmes actions que dans la page Repas.
+function parentsAccueil(s){
+  if (!moi().parent) return '';
+  return `<button type="button" class="btn neutre sm" data-a="choisir" data-id="${s.id}">Décider ce repas</button>${boutonPoubelle(s)}`;
 }
 // Le bouton qui ouvre la fenêtre de suggestion (accueil et page Repas).
 function boutonSuggestion(j, sug){
@@ -1003,7 +1029,7 @@ function carteSugg(j, s, parent){
   const verrou = !!(cr && cr.priorite > m.priorite);          // souper décidé par un rang plus élevé
   const peutRetirer = parent && (!cp || cp.priorite <= m.priorite);
   const peutSupprimer = (s.propose_par === m.id && !s.choisi) || peutRetirer;
-  const poubelle = peutSupprimer ? `<button type="button" class="btn-icone" data-a="del-sugg" data-id="${s.id}" aria-label="Supprimer ${esc(s.titre)}">🗑️</button>` : '';
+  const poubelle = peutSupprimer ? boutonPoubelle(s) : '';
   let action = '';
   if (parent){
     if (s.choisi) action = peutRetirer
@@ -1205,6 +1231,25 @@ function dessinerFeuille(){
   $('#sheet').hidden = false;
 }
 
+/* ---------- Fenêtre de confirmation (remplace confirm() du navigateur, dont le titre ne se change pas) ---------- */
+// demander({titre, message, oui, non, danger, icone}) → promesse : true si on confirme.
+let _finDlg = null;
+function demander({titre, message, oui = 'OK', non = 'Annuler', danger = false, icone = ''}){
+  const d = $('#dialogue');
+  $('#dlg-t').innerHTML = `${icone}<span>${esc(titre)}</span>`;
+  $('#dlg-m').textContent = message;
+  const bOui = d.querySelector('.btn[data-dlg="oui"]'), bNon = d.querySelector('.btn[data-dlg="non"]');
+  bOui.textContent = oui; bOui.className = `btn ${danger ? 'danger' : 'ghost'}`;
+  bNon.textContent = non;
+  if (_finDlg) _finDlg(false);
+  d.hidden = false; bNon.focus();
+  return new Promise(res => { _finDlg = res; });
+}
+function finDialogue(oui){
+  const d = $('#dialogue'); if (d.hidden) return;
+  d.hidden = true; const f = _finDlg; _finDlg = null; if (f) f(oui);
+}
+
 /* ---------- Rendu principal ---------- */
 function render(){
   if (!S.sess || !S.data) return;
@@ -1269,6 +1314,8 @@ async function copier(txt){
   catch(e){ prompt('Copie ce texte :', txt); }
 }
 document.addEventListener('click', async e => {
+  const dlg = e.target.closest('[data-dlg]');
+  if (dlg){ finDialogue(dlg.dataset.dlg === 'oui'); return; }
   const emojiChoice = e.target.closest('.emoji-option');
   if (emojiChoice) {
     const field = document.getElementById('p-e');
@@ -1304,19 +1351,19 @@ document.addEventListener('click', async e => {
     case 'choisir': {
       // Remplacer un souper déjà décidé demande une confirmation.
       const s = S.data.suggestions.find(x => x.id === d.id), r = s && repasChoisi(s.jour);
-      if (r && r.id !== d.id && !confirm(`Remplacer ${r.titre} par ${s.titre} comme souper ?`)) break;
+      if (r && r.id !== d.id && !(await demander({titre:'Remplacer le souper', message:`Remplacer ${r.titre} par ${s.titre} comme souper ?`, oui:'Remplacer'}))) break;
       await act('choisir_repas', {p_id:d.id}, '✅ Repas décidé'); break;
     }
     case 'autres': S.autres[d.j] = !S.autres[d.j]; render(); break;
     case 'voter': el.disabled = true; await act('voter_repas', {p_id:d.id}, '👍 Vote enregistré'); el.disabled = false; break;
     case 'retirer-vote': el.disabled = true; await act('retirer_vote', {p_jour:d.j}, 'Vote retiré'); el.disabled = false; break;
-    case 'retirer-choix': if (confirm('Annuler la décision pour ce jour ?')) await act('retirer_choix', {p_jour:d.j}, 'Décision annulée'); break;
+    case 'retirer-choix': if (await demander({titre:'Annuler la décision', message:'Annuler la décision pour ce jour ?', oui:'Annuler la décision', non:'Garder la décision'})) await act('retirer_choix', {p_jour:d.j}, 'Décision annulée'); break;
     case 'del-sugg': {
       // La confirmation dit ce qui sera perdu : les votes, et la décision s'il y en a une.
       const s = S.data.suggestions.find(x => x.id === d.id); if (!s) break;
       const n = votantsDe(s.id).length;
       const msg = `Supprimer ${s.titre} ?` + (n === 1 ? ' Le vote sera effacé.' : n > 1 ? ` Les ${n} votes seront effacés.` : '') + (s.choisi ? ' Le souper ne sera plus décidé.' : '');
-      if (confirm(msg)) await act('supprimer_suggestion', {p_id:d.id}, 'Suggestion supprimée');
+      if (await demander({titre:'Supprimer la suggestion', icone:ICONE_POUBELLE, message:msg, oui:'Supprimer', danger:true})) await act('supprimer_suggestion', {p_id:d.id}, 'Suggestion supprimée');
       break;
     }
     case 'sem': S.semaine = Math.max(0, S.semaine + (+d.d)); try { await refresh(); } catch(err){ toast('⚠️ ' + err.message); } break;
@@ -1347,7 +1394,7 @@ document.addEventListener('submit', async e => {
       // Doublon (sans tenir compte des majuscules, des accents ni des espaces autour) : on avertit, on laisse ajouter.
       const cle = x => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const dbl = S.data.suggestions.find(x => x.jour === f.dataset.j && cle(x.titre) === cle(v.titre));
-      if (dbl && !confirm(`${dbl.titre} est déjà suggéré ce jour-là.${voteOuvert(f.dataset.j) ? ' Vote plutôt pour lui!' : ''} Ajouter quand même ?`)) break;
+      if (dbl && !(await demander({titre:'Repas déjà suggéré', message:`${dbl.titre} est déjà suggéré ce jour-là.${voteOuvert(f.dataset.j) ? ' Vote plutôt pour lui!' : ''} Ajouter quand même ?`, oui:'Ajouter quand même'}))) break;
       ok = await act('proposer_repas', {p_jour:f.dataset.j, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas décidé' : '💡 Suggestion ajoutée');
       if (ok && S.sheet && S.sheet.type === 'suggestion') fermer();
       break;
@@ -1408,11 +1455,13 @@ document.addEventListener('keydown', e => {
   if (!S.sess && L.choisi){
     if (/^[0-9]$/.test(e.key)) touchePin(e.key);
     else if (e.key === 'Backspace') touchePin('del');
-  } else if (e.key === 'Escape' && S.sheet) fermer();
+  } else if (e.key === 'Escape' && !$('#dialogue').hidden) finDialogue(false);
+  else if (e.key === 'Escape' && S.sheet) fermer();
 });
 
 /* ---------- Mise à jour automatique ---------- */
 function occupe(){
+  if (!$('#dialogue').hidden) return true;
   const a = document.activeElement;
   if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return true;
   if (S.sheet && ['invite','profil','nip','presence_maison','mes_heures','suggestion'].includes(S.sheet.type)) return true;
