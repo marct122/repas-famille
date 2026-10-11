@@ -123,6 +123,19 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .vote-zone{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
 .vote-zone-t{font-weight:800;font-size:1.05rem;margin-bottom:2px}
 .sugg-btn{margin-bottom:10px}
+/* Banque de repas, recherche en temps réel, épicerie */
+.choix-banque{margin-top:6px}
+.choix-info{margin:2px 0 4px}
+.choix-liste{display:flex;flex-direction:column;gap:4px}
+.choix{display:block;width:100%;text-align:left;min-height:44px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.choix.on{border-color:var(--ok);background:var(--ok-bg)}
+.plat-ligne{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;min-height:44px;padding:10px 12px;margin-top:6px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.articles{margin:6px 0 0;padding-left:22px}
+.articles li{padding:3px 0}
+.meal-panier{display:flex;align-items:center;gap:8px}
+.btn-icone.panier{background:var(--card);color:var(--bleu)}
+.epi-souper{padding:8px 0;border-top:1px solid var(--line)}
+.epi-souper:first-of-type{border-top:0}
 /* Page Repas : carte de suggestion */
 .sugg-h{display:flex;align-items:flex-start;gap:8px}
 .sugg-h > div{flex:1;min-width:0}
@@ -217,6 +230,7 @@ nav#nav button.on{color:var(--accent);font-weight:700}
   <button data-a="tab" data-tab="auj"><span>🏠</span>Accueil</button>
   <button data-a="tab" data-tab="sem"><span>📅</span>Semaine</button>
   <button data-a="tab" data-tab="repas"><span>🍽️</span>Repas</button>
+  <button data-a="tab" data-tab="epi"><span>🛒</span>Épicerie</button>
   <button data-a="tab" data-tab="fam"><span>👪</span>Famille</button>
   <button data-a="tab" data-tab="moi"><span>⚙️</span>Moi</button>
 </nav>
@@ -361,6 +375,12 @@ const dansLeRepas = x => racine(x.terme) === racine(x.mot) ? '' : ` — ${x.mot}
 const phraseGout = (nom, x) => `🚩 ${nom} n'aime pas ${avecArticle(x.terme)}${dansLeRepas(x)}`;
 const phraseAllergie = (nom, x) => `⚠️ Allergie : ${nom} ne peut pas manger ${avecArticle(x.terme)}${dansLeRepas(x)}`;
 const texteRepas = s => `${s.titre} ${s.ingredients || ''}`;
+// Banque de repas : même clé anti-doublon que _cle_plat dans supabase.sql
+// (minuscules, sans accents ni ponctuation, sans petits mots, mots de plus de 4 lettres au singulier).
+const MOTS_VIDES = new Set(['a','au','aux','de','du','des','d','la','le','les','l','et','en','un','une']);
+const motsDe = s => norm(s).replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+const singulier = w => w.length > 4 && /[sx]$/.test(w) ? w.slice(0, -1) : w;
+const clePlat = s => motsDe(s).filter(w => !MOTS_VIDES.has(w)).map(singulier).join(' ');
 
 /* =====================================================================
    Accès aux données
@@ -400,12 +420,27 @@ const SEED = [
 ];
 const Demo = (() => {
   const K = 'repas-demo-v1';
-  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], votes:[], horaires_souper:[], presence_maison:[], journal:[]});
+  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], votes:[], plats:[], horaires_souper:[], presence_maison:[], journal:[]});
+  // Le repas de la banque qui correspond à ce nom (créé s'il n'existe pas), comme _plat_pour.
+  const platPourDans = (base, membre, nom, ingr) => {
+    const k = clePlat(nom); if (!k) return null;
+    const i = String(ingr || '').trim();
+    let pl = base.plats.find(x => x.cle === k);
+    if (!pl){ pl = {id:Math.random().toString(36).slice(2) + Date.now().toString(36), nom:String(nom).trim().slice(0, 80), cle:k, ingredients:i.slice(0, 200), articles:[], cree_par:membre}; base.plats.push(pl); }
+    else if (i && !pl.ingredients) pl.ingredients = i.slice(0, 200);
+    return pl.id;
+  };
   const hydrate = () => {
     const cur = LS.get(K) || seed();
     cur.horaires_souper = cur.horaires_souper || [];
     cur.presence_maison = cur.presence_maison || [];
     cur.votes = cur.votes || [];
+    cur.plats = cur.plats || [];
+    // Comme supabase.sql : import UNIQUE des suggestions déjà faites dans la banque.
+    if (!cur.banqueImportee){
+      for (const s of [...cur.suggestions].sort((a, b) => a.cree < b.cree ? -1 : 1)) if (!s.plat) s.plat = platPourDans(cur, s.propose_par, s.titre, s.ingredients);
+      cur.banqueImportee = true;
+    }
     const byId = Object.fromEntries(SEED.map(m => [m.id, m]));
     cur.membres = (cur.membres || []).map(m => {
       const base = byId[m.id];
@@ -495,6 +530,7 @@ const Demo = (() => {
       return {moi:m.id, heure_limite:11, heure_rappel:10, sujet_parents:m.parent ? 'repas-demo-parents' : null,
         membres:db.membres.map(x => ({...x, nip:undefined, sujet_ntfy:x.id === m.id ? x.sujet_ntfy : null})),
         presences:db.presences.filter(dans), invites:db.invites.filter(dans), suggestions:db.suggestions.filter(dans), votes:db.votes.filter(dans),
+        plats:db.plats.map(x => ({id:x.id, nom:x.nom, cle:x.cle, ingredients:x.ingredients, articles:[...x.articles]})),
         horaires_souper:db.horaires_souper.filter(dans), presence_maison:db.presence_maison.filter(dans),
         journal:db.journal.slice(0,40)};
     },
@@ -574,7 +610,7 @@ const Demo = (() => {
       const m = qui(p_jeton);
       if (!p_titre) err('Indique le nom du repas.');
       if (p_jour < today()) err('Cette journée est passée.');
-      const s = {id:uid(), jour:p_jour, titre:p_titre, ingredients:p_ingredients || '', propose_par:m.id, cree:now(), choisi:false, choisi_par:null, choisi_le:null};
+      const s = {id:uid(), jour:p_jour, titre:p_titre, ingredients:p_ingredients || '', propose_par:m.id, cree:now(), choisi:false, choisi_par:null, choisi_le:null, plat:platPourDans(db, m.id, p_titre, p_ingredients)};
       db.suggestions.push(s);
       log(m.id, m.id, p_jour, `Suggestion pour le souper du ${jourLong(p_jour)} : ${p_titre}`);
       if (p_choisir) choisir(m, s);
@@ -615,6 +651,42 @@ const Demo = (() => {
       db.votes = db.votes.filter(v => !(v.jour === p_jour && v.membre === m.id));
       return null;
     },
+    // Banque de repas (mêmes règles et messages que supabase.sql)
+    enregistrer_plat({p_jeton, p_id, p_nom, p_ingredients, p_articles}){
+      const m = qui(p_jeton), nom = String(p_nom || '').trim(), k = clePlat(nom);
+      if (!nom || !k) err('Indique le nom du repas.');
+      if (nom.length > 80) err('Le nom du repas est trop long (80 caractères au maximum).');
+      const autre = db.plats.find(x => x.cle === k && x.id !== p_id);
+      if (autre) err(`${autre.nom} est déjà dans la banque.`);
+      let pl;
+      if (!p_id){ pl = {id:uid(), nom, cle:k, ingredients:'', articles:[], cree_par:m.id}; db.plats.push(pl); }
+      else { pl = db.plats.find(x => x.id === p_id); if (!pl) err('Ce repas n\'est plus dans la banque.'); }
+      Object.assign(pl, {nom, cle:k, ingredients:String(p_ingredients || '').trim().slice(0, 200)});
+      if (p_articles){
+        if (p_articles.length > 60) err('Trop d\'articles (60 au maximum).');
+        pl.articles = p_articles.map(a => String(a || '').trim().slice(0, 120)).filter(Boolean);
+      }
+      return pl.id;
+    },
+    ajouter_plats({p_jeton, p_noms}){
+      const m = qui(p_jeton), noms = p_noms || [];
+      if (noms.length > 200) err('Trop de repas d\'un coup (200 au maximum).');
+      let ajoutes = 0; const existants = [], vus = new Set();
+      for (const brut of noms){
+        const nom = String(brut || '').trim().slice(0, 80), k = clePlat(nom);
+        if (!k || vus.has(k)) continue; vus.add(k);
+        const ex = db.plats.find(x => x.cle === k);
+        if (ex) existants.push(ex.nom);
+        else { db.plats.push({id:uid(), nom, cle:k, ingredients:'', articles:[], cree_par:m.id}); ajoutes++; }
+      }
+      return {ajoutes, existants};
+    },
+    supprimer_plat({p_jeton, p_id}){
+      const m = qui(p_jeton); if (!m.parent) err('Seuls les parents peuvent retirer un repas de la banque.');
+      db.plats = db.plats.filter(x => x.id !== p_id);
+      for (const s of db.suggestions) if (s.plat === p_id) s.plat = null;
+      return null;
+    },
     enregistrer_profil({p_jeton, p_membre, p_emoji, p_aime, p_naime_pas, p_allergies}){
       const m = qui(p_jeton); if (m.id !== p_membre && !m.parent) err('Tu ne peux modifier que ton propre profil.');
       const c = M(p_membre); Object.assign(c, {emoji:verifEmoji(p_emoji) || c.emoji, aime:p_aime || '', naime_pas:p_naime_pas || [], allergies:p_allergies || []});
@@ -640,7 +712,7 @@ const Demo = (() => {
 /* =====================================================================
    État et aides
    ===================================================================== */
-const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null, modif:false, autres:{}};
+const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null, modif:false, autres:{}, epiJours:null, banqueQ:''};
 const membre = id => S.data.membres.find(m => m.id === id);
 const prenom = id => (membre(id) || {}).prenom || id || '?';
 const moi = () => membre(S.data.moi);
@@ -654,6 +726,48 @@ const repasChoisi = j => S.data.suggestions.find(s => s.jour === j && s.choisi);
 const votantsDe = id => S.data.membres.filter(m => (S.data.votes || []).some(v => v.suggestion === id && v.membre === m.id));
 const monVote = j => (S.data.votes || []).find(v => v.jour === j && v.membre === S.data.moi);
 const voteOuvert = j => j >= today() && !repasChoisi(j);
+// Banque de repas
+const platsTries = () => [...(S.data.plats || [])].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+const platParId = id => (S.data.plats || []).find(x => x.id === id);
+// Le repas de la banque d'une suggestion : par son lien, sinon par la clé de son nom.
+const platDe = s => platParId(s.plat) || (clePlat(s.titre) ? (S.data.plats || []).find(x => x.cle === clePlat(s.titre)) : null);
+// Recherche dans la banque : chaque mot tapé doit être le début d'un mot (accents, majuscules et
+// pluriel ignorés ; petits mots ignorés sauf le dernier, qu'on est peut-être en train d'écrire).
+// D'abord les repas trouvés par leur NOM, puis ceux trouvés par leurs INGRÉDIENTS.
+function chercherPlats(q){
+  const brut = motsDe(q);
+  const mots = brut.filter((w, i) => i === brut.length - 1 || !MOTS_VIDES.has(w)).map(singulier);
+  if (!mots.length) return [];
+  const couvre = liste => mots.every(m => liste.some(w => w.startsWith(m)));
+  const k = clePlat(q), nom = [], ingr = [];
+  for (const pl of platsTries()){
+    const mn = motsDe(pl.nom);
+    if (couvre(mn)) nom.push(pl);
+    else if (couvre([...mn, ...motsDe(pl.ingredients)])) ingr.push(pl);
+  }
+  nom.sort((a, b) => (b.cle === k) - (a.cle === k));   // le repas identique en premier
+  return [...nom, ...ingr];
+}
+// Sous le champ « Repas » : les repas semblables de la banque, à toucher pour les choisir.
+function htmlChoixBanque(q){
+  const t = String(q || '').trim(); if (!t) return '';
+  const k = clePlat(t), trouves = chercherPlats(t), exact = k && (S.data.plats || []).find(x => x.cle === k);
+  if (!trouves.length) return '<div class="small choix-info">✨ Nouveau repas : il sera ajouté à la banque.</div>';
+  const vus = trouves.slice(0, 8);
+  return `<div class="small choix-info">${exact ? '✓ Déjà dans la banque.' : 'Dans la banque (touche pour choisir) :'}</div>
+    <div class="choix-liste">${vus.map(pl => `<button type="button" class="choix${exact && pl.id === exact.id ? ' on' : ''}" data-a="choisir-plat" data-id="${pl.id}"><b>${esc(pl.nom)}</b>${pl.ingredients ? `<span class="small"> · ${esc(pl.ingredients)}</span>` : ''}</button>`).join('')}</div>
+    ${trouves.length > 8 ? `<div class="small">… et ${trouves.length - 8} autre${trouves.length - 8 > 1 ? 's' : ''} : précise ta recherche.</div>` : ''}
+    ${exact ? '' : '<div class="small choix-info">Pas dans la liste ? Continue d’écrire : le repas sera ajouté à la banque.</div>'}`;
+}
+// Liste de la fenêtre « Banque de repas » (filtrée par la recherche).
+function listeBanque(q){
+  const tous = platsTries();
+  if (!tous.length) return '<p class="muted">La banque est vide. Ajoute tes premiers repas !</p>';
+  const liste = String(q || '').trim() ? chercherPlats(q) : tous;
+  if (!liste.length) return `<p class="muted">Aucun repas ne correspond.</p><button type="button" class="btn ghost sm" data-a="plat-nouveau" data-nom="${esc(q.trim())}">➕ Ajouter « ${esc(q.trim())} »</button>`;
+  return liste.map(pl => `<button type="button" class="plat-ligne" data-a="plat" data-id="${pl.id}" data-retour="banque"><b>${esc(pl.nom)}</b><span class="small">${pl.ingredients ? `${esc(pl.ingredients)} · ` : ''}🛒 ${pl.articles.length ? `${pl.articles.length} article${pl.articles.length > 1 ? 's' : ''}` : 'aucun article'}</span></button>`).join('');
+}
+const boutonPanier = j => `<button type="button" class="btn-icone panier" data-a="panier" data-j="${j}" aria-label="Liste d’épicerie pour ce souper">🛒</button>`;
 const heureSouper = j => (S.data.horaires_souper || []).find(x => x.jour === j)?.heure || '';
 const peutModifierMaison = id => id === S.data.moi || ['nadine','marc'].includes(S.data.moi);
 
@@ -911,7 +1025,7 @@ function ligneVotes(j, s, titre = '', masquerVide = false, extra = ''){
 function zoneRepasAccueil(j, r, sug){
   if (r){
     const avec = sug.filter(s => votantsDe(s.id).length);
-    return `<div class="meal"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}</div>`
+    return `<div class="meal meal-panier"><div class="grow"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}</div>${boutonPanier(j)}</div>`
       + avec.map(s => `<div class="line small">👍 ${esc(s.titre)} : ${esc(votantsDe(s.id).map(m => m.prenom).join(', '))}</div>`).join('');
   }
   const bouton = boutonSuggestion(j, sug);
@@ -1015,6 +1129,7 @@ function vueRepas(){
       : '');
   } else liste = sug.map(s => carteSugg(j, s, parent)).join('');
   return `${enTete('Repas', 'Suggère un souper et vote pour ton préféré. Les parents décident.')}
+    <div class="actions" style="margin-top:6px"><button type="button" class="btn ghost sm" data-a="banque">📚 Banque de repas (${(S.data.plats || []).length})</button></div>
     <div class="chips">${jours.map(x => `<button class="chip${x === j ? ' on' : ''}" data-a="repas-jour" data-j="${x}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : suggDu(x).length ? '💡' : ''}</span></button>`).join('')}</div>
     <div class="card"><h3>🍽️ Souper · ${cap(jourLong(j))}</h3>
       <label class="f">Heure du souper</label>
@@ -1033,6 +1148,7 @@ function formSuggestion(j){
   const parent = moi().parent;
   return `<form data-f="sugg" data-j="${j}">
         <label class="f" for="s-t">Repas</label><input type="text" id="s-t" name="titre" required maxlength="80" placeholder="Ex. : Tacos au poulet" autocomplete="off">
+        <div class="choix-banque" aria-live="polite"></div>
         <label class="f" for="s-i">Ingrédients principaux</label><input type="text" id="s-i" name="ingredients" maxlength="200" placeholder="Ex. : poulet, tortillas, fromage, salsa" autocomplete="off">
         <div class="hint">Les ingrédients servent aux alertes 🚩 et ⚠️ selon les profils.</div>
         <div class="apercu" style="margin-top:8px"></div>
@@ -1063,6 +1179,37 @@ function carteSugg(j, s, parent){
     ${resumeFlags(j, texteRepas(s))}
     ${ligneVotes(j, s, '', !!s.choisi)}
     ${action ? `<div class="ligne-parents"><span class="lp-t">Parents :</span>${action}</div>` : ''}</div>`;
+}
+// Page Épicerie : on choisit un ou plusieurs jours ; la liste regroupe les articles des soupers
+// DÉCIDÉS de ces jours (un même article = « ×2 », avec les jours en petit).
+function vueEpicerie(){
+  const t = today(), jours = [...Array(14)].map((_, i) => addDays(t, i));
+  if (!S.epiJours) S.epiJours = [t];
+  const choisis = jours.filter(x => S.epiJours.includes(x));
+  const etiquette = x => `${cap(jourAbr(x))} ${jourNum(x)}`;
+  const groupes = new Map();
+  const soupers = choisis.map(j => {
+    const r = repasChoisi(j), pl = r ? platDe(r) : null;
+    if (pl) for (const a of pl.articles){
+      const k = norm(a).replace(/\s+/g, ' ').trim();
+      const g = groupes.get(k) || {texte:a, n:0, jours:[]};
+      g.n++; g.jours.push(j); groupes.set(k, g);
+    }
+    let detail;
+    if (!r) detail = '<span class="late">souper pas encore décidé</span>';
+    else if (!pl) detail = `${esc(r.titre)} <span class="small">· pas dans la banque</span> <button type="button" class="btn ghost sm" data-a="plat-nouveau" data-nom="${esc(r.titre)}" data-retour="aucun">➕ Ajouter</button>`;
+    else if (!pl.articles.length) detail = `${esc(r.titre)} <span class="small">· aucun article encore</span> <button type="button" class="btn ghost sm" data-a="plat" data-id="${pl.id}" data-retour="aucun">➕ Ajouter les articles</button>`;
+    else detail = `${esc(r.titre)} <span class="small">· ${pl.articles.length} article${pl.articles.length > 1 ? 's' : ''}</span>`;
+    return `<div class="epi-souper"><b>${etiquette(j)}</b> — ${detail}</div>`;
+  });
+  const liste = [...groupes.values()].sort((a, b) => a.texte.localeCompare(b.texte, 'fr'));
+  return `${enTete('Épicerie', 'Choisis un ou plusieurs jours : la liste regroupe les articles des soupers décidés.')}
+    <div class="chips">${jours.map(x => `<button class="chip${choisis.includes(x) ? ' on' : ''}" data-a="epi-jour" data-j="${x}" aria-pressed="${choisis.includes(x)}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : ''}</span></button>`).join('')}</div>
+    <div class="actions" style="margin-top:0"><button type="button" class="btn ghost sm" data-a="epi-semaine">Les 7 prochains jours</button><button type="button" class="btn ghost sm" data-a="epi-aucun">Tout désélectionner</button></div>
+    <div class="card"><h3>🍽️ Soupers</h3>${choisis.length ? soupers.join('') : '<p class="muted">Touche un ou plusieurs jours ci-dessus.</p>'}</div>
+    <div class="card"><h3>🛒 À acheter (${liste.length})</h3>${liste.length
+      ? `<ul class="articles">${liste.map(g => `<li>${esc(g.texte)}${g.n > 1 ? ` <b>×${g.n}</b>` : ''}${choisis.length > 1 ? ` <span class="small">· ${g.jours.map(etiquette).join(', ')}</span>` : ''}</li>`).join('')}</ul>`
+      : `<p class="muted">${choisis.length ? 'Aucun article pour ces soupers pour l’instant.' : 'Choisis des jours pour voir la liste.'}</p>`}</div>`;
 }
 function vueFamille(){
   const m0 = moi();
@@ -1104,7 +1251,7 @@ function vueMoi(){
     ${S.data.journal.length ? `<div class="card"><h3>🕘 Historique des changements</h3><div class="list">${S.data.journal.map(ligneJournal).join('')}</div></div>` : ''}
     ${DEMO ? '<div class="card"><button class="btn danger sm" data-a="demo-reset">Effacer les données de démo</button></div>' : ''}`;
 }
-const VUES = {auj:vueAccueil, sem:vueSemaine, repas:vueRepas, fam:vueFamille, moi:vueMoi};
+const VUES = {auj:vueAccueil, sem:vueSemaine, repas:vueRepas, epi:vueEpicerie, fam:vueFamille, moi:vueMoi};
 
 function boutonPeriodeMaison(id, j, texte, periode = presenceMaison(j, id)){
   if (j < today() || !peutModifierMaison(id)) return '';
@@ -1163,6 +1310,45 @@ const FEUILLES = {
   suggestion({j}){
     return {titre:`💡 Suggestion de repas — ${esc(jourLong(j))}`, form:true,
       corps:`<div class="card">${formSuggestion(j)}</div>`};
+  },
+  banque(){
+    return {titre:`📚 Banque de repas (${(S.data.plats || []).length})`, form:true,
+      corps:`<div class="card">
+        <input type="text" id="banque-q" data-banque enterkeyhint="search" placeholder="Chercher un repas ou un ingrédient" autocomplete="off" value="${esc(S.banqueQ)}" aria-label="Chercher dans la banque">
+        <div class="actions"><button type="button" class="btn ghost sm" data-a="plat-nouveau">➕ Ajouter un repas</button><button type="button" class="btn ghost sm" data-a="plats-multi">Ajouter plusieurs repas</button></div>
+        <div id="banque-liste">${listeBanque(S.banqueQ)}</div></div>`};
+  },
+  plat({id, nom}){
+    const pl = id ? platParId(id) : null;
+    if (id && !pl) return {titre:'📚 Repas', corps:'<div class="card"><p>Ce repas n’est plus dans la banque.</p></div>'};
+    return {titre:pl ? `✏️ ${esc(pl.nom)}` : '➕ Nouveau repas', form:true,
+      corps:`<div class="card"><form data-f="plat" data-id="${pl ? pl.id : ''}">
+        <label class="f" for="pl-n">Nom du repas</label><input type="text" id="pl-n" name="nom" required maxlength="80" value="${esc(pl ? pl.nom : (nom || ''))}" placeholder="Ex. : Spaghetti à la viande" autocomplete="off">
+        <label class="f" for="pl-i">Ingrédients principaux</label><input type="text" id="pl-i" name="ingredients" maxlength="200" value="${esc(pl ? pl.ingredients : '')}" placeholder="Ex. : pâtes, boeuf, tomates" autocomplete="off">
+        <div class="hint">Les ingrédients servent aux alertes 🚩 et ⚠️ selon les profils.</div>
+        <label class="f" for="pl-a">🛒 Articles d’épicerie</label><textarea id="pl-a" name="articles" rows="6" placeholder="Spaghetti Catelli 450 g&#10;Sauce à spaghetti 680 ml&#10;Boeuf haché 1 lb">${esc(pl ? pl.articles.join('\n') : '')}</textarea>
+        <div class="hint">Un article par ligne. Pas grave si tu ne sais pas tout : tu pourras compléter plus tard.</div>
+        <button class="btn full" style="margin-top:12px">Enregistrer</button></form>
+        ${pl && moi().parent ? `<div class="actions"><button type="button" class="btn danger sm" data-a="plat-retirer" data-id="${pl.id}">Retirer de la banque</button></div>` : ''}</div>`};
+  },
+  plats_multi(){
+    return {titre:'📚 Ajouter plusieurs repas', form:true,
+      corps:`<div class="card"><form data-f="plats-multi">
+        <label class="f" for="pm-n">Un repas par ligne</label><textarea id="pm-n" name="noms" rows="10" placeholder="Spaghetti à la viande&#10;Tacos au poulet&#10;Pâté chinois"></textarea>
+        <div class="hint">Les repas déjà dans la banque sont repérés et ne sont pas ajoutés en double. Tu pourras ajouter les ingrédients et les articles plus tard.</div>
+        <button class="btn full" style="margin-top:12px">Ajouter à la banque</button></form></div>`};
+  },
+  panier({j}){
+    const r = repasChoisi(j), pl = r ? platDe(r) : null;
+    if (!r) return {titre:'🛒 Épicerie', corps:'<div class="card"><p>Le souper de ce jour n’est pas encore décidé.</p></div>'};
+    const art = pl ? pl.articles : [];
+    return {titre:`🛒 ${esc(r.titre)}`,
+      corps:`<div class="card"><div class="small">Souper ${esc(relJour(j))} · ${esc(jourLong(j))}</div>
+        ${!pl ? '<p>Ce repas n’est pas dans la banque de repas.</p>'
+          : art.length ? `<ul class="articles">${art.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : '<p class="muted">Aucun article encore pour ce repas.</p>'}
+        <div class="actions">${pl
+          ? `<button type="button" class="btn ghost sm" data-a="plat" data-id="${pl.id}" data-retour="panier" data-j="${j}">${art.length ? '✏️ Modifier les articles' : '➕ Ajouter les articles'}</button>`
+          : `<button type="button" class="btn ghost sm" data-a="plat-nouveau" data-nom="${esc(r.titre)}" data-retour="panier" data-j="${j}">➕ Ajouter à la banque</button>`}</div></div>`};
   },
   invite({j}){
     return {titre:`🎟️ Invité au souper — ${esc(jourLong(j))}`, form:true,
@@ -1242,6 +1428,8 @@ const FEUILLES = {
         <button class="btn full" style="margin-top:14px">Enregistrer</button></form></div>`};
   }
 };
+// Fenêtres qui contiennent une saisie : le rafraîchissement automatique ne les redessine pas.
+const FEUILLES_SAISIE = ['invite','profil','nip','presence_maison','mes_heures','suggestion','banque','plat','plats_multi'];
 function ouvrir(type, args){ S.sheet = {type, ...args}; dessinerFeuille(); }
 function fermer(){ S.sheet = null; $('#sheet').hidden = true; $('#sheet-card').innerHTML = ''; }
 function dessinerFeuille(){
@@ -1277,7 +1465,7 @@ function render(){
   $('#app').innerHTML = VUES[S.tab]();
   $('#nav').hidden = false;
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-  if (S.sheet && !['invite','profil','nip','presence_maison','mes_heures','suggestion'].includes(S.sheet.type)) dessinerFeuille();
+  if (S.sheet && !FEUILLES_SAISIE.includes(S.sheet.type)) dessinerFeuille();
 }
 async function refresh(){
   const t = today();
@@ -1363,6 +1551,28 @@ document.addEventListener('click', async e => {
     case 'day': ouvrir('day', {j:d.j}); break;
     case 'invite': ouvrir('invite', {j:d.j}); break;
     case 'suggerer': ouvrir('suggestion', {j:d.j}); break;
+    case 'choisir-plat': {
+      // Un repas de la banque touché sous « Repas » : on remplit le nom et ses ingrédients.
+      const f = el.closest('form'), pl = platParId(d.id); if (!f || !pl) break;
+      f.elements.titre.value = pl.nom;
+      if (pl.ingredients) f.elements.ingredients.value = pl.ingredients;
+      f.elements.titre.dispatchEvent(new Event('input', {bubbles:true}));
+      break;
+    }
+    case 'banque': S.banqueQ = ''; ouvrir('banque', {}); break;
+    case 'plat': ouvrir('plat', {id:d.id, retour:d.retour || 'banque', j:d.j}); break;
+    case 'plat-nouveau': ouvrir('plat', {id:null, nom:d.nom || '', retour:d.retour || 'banque', j:d.j}); break;
+    case 'plats-multi': ouvrir('plats_multi', {}); break;
+    case 'plat-retirer': {
+      const pl = platParId(d.id); if (!pl) break;
+      if (await demander({titre:'Retirer de la banque', icone:ICONE_POUBELLE, message:`Retirer ${pl.nom} de la banque ? Ses articles seront effacés. Les suggestions déjà faites gardent leur nom.`, oui:'Retirer', danger:true})
+          && await act('supprimer_plat', {p_id:pl.id}, 'Repas retiré de la banque')) ouvrir('banque', {});
+      break;
+    }
+    case 'panier': ouvrir('panier', {j:d.j}); break;
+    case 'epi-jour': S.epiJours = S.epiJours.includes(d.j) ? S.epiJours.filter(x => x !== d.j) : [...S.epiJours, d.j]; render(); break;
+    case 'epi-semaine': S.epiJours = [...Array(7)].map((_, i) => addDays(today(), i)); render(); break;
+    case 'epi-aucun': S.epiJours = []; render(); break;
     case 'del-invite': if (confirm('Retirer cet invité du souper ?')) await act('supprimer_invite', {p_id:d.id}, 'Invité retiré'); break;
     case 'goto-repas': S.repasJour = d.j; S.tab = 'repas'; fermer(); render(); scrollTo(0,0); break;
     case 'repas-jour': S.repasJour = d.j; render(); break;
@@ -1411,12 +1621,37 @@ document.addEventListener('submit', async e => {
   let ok = false;
   switch (f.dataset.f){
     case 'sugg': {
-      // Doublon (sans tenir compte des majuscules, des accents ni des espaces autour) : on avertit, on laisse ajouter.
-      const cle = x => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const dbl = S.data.suggestions.find(x => x.jour === f.dataset.j && cle(x.titre) === cle(v.titre));
+      // Si le repas est déjà dans la banque (même clé), on prend son nom et, au besoin, ses ingrédients.
+      const pl = clePlat(v.titre) ? (S.data.plats || []).find(x => x.cle === clePlat(v.titre)) : null;
+      const titre = pl ? pl.nom : v.titre.trim(), ingr = (v.ingredients || '').trim() || (pl ? pl.ingredients : '');
+      // Doublon le même jour (même clé que la banque : « Tacos poulet » = « Tacos au poulet ») : on avertit, on laisse ajouter.
+      const cle = x => clePlat(x) || norm(x).trim();
+      const dbl = S.data.suggestions.find(x => x.jour === f.dataset.j && cle(x.titre) === cle(titre));
       if (dbl && !(await demander({titre:'Repas déjà suggéré', message:`${dbl.titre} est déjà suggéré ce jour-là.${voteOuvert(f.dataset.j) ? ' Vote plutôt pour lui!' : ''} Ajouter quand même ?`, oui:'Ajouter quand même'}))) break;
-      ok = await act('proposer_repas', {p_jour:f.dataset.j, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas décidé' : '💡 Suggestion ajoutée');
+      ok = await act('proposer_repas', {p_jour:f.dataset.j, p_titre:titre, p_ingredients:ingr, p_choisir:!!v.choisir}, v.choisir ? '✅ Repas décidé' : '💡 Suggestion ajoutée');
       if (ok && S.sheet && S.sheet.type === 'suggestion') fermer();
+      break;
+    }
+    case 'plat': {
+      const id = f.dataset.id || null;
+      const articles = String(v.articles || '').split('\n').map(x => x.trim()).filter(Boolean);
+      ok = await act('enregistrer_plat', {p_id:id, p_nom:String(v.nom || '').trim(), p_ingredients:String(v.ingredients || '').trim(), p_articles:articles}, id ? '✅ Repas enregistré' : '✅ Repas ajouté à la banque');
+      if (ok){
+        // Retour à la fenêtre d'où l'on venait (banque ou panier), sinon on ferme.
+        const r = S.sheet && S.sheet.retour, j = S.sheet && S.sheet.j;
+        if (r === 'banque') ouvrir('banque', {}); else if (r === 'panier') ouvrir('panier', {j}); else fermer();
+      }
+      break;
+    }
+    case 'plats-multi': {
+      const noms = String(v.noms || '').split('\n').map(x => x.trim()).filter(Boolean);
+      if (!noms.length){ toast('Écris au moins un repas, un par ligne.'); break; }
+      try {
+        const r = await rpc('ajouter_plats', {p_jeton:S.sess.jeton, p_noms:noms});
+        const ex = r.existants || [];
+        toast(`✅ ${r.ajoutes} repas ajouté${r.ajoutes > 1 ? 's' : ''}${ex.length ? ` · déjà dans la banque : ${ex.join(', ')}` : ''}`, 7000);
+        await refresh(); ok = true; ouvrir('banque', {});
+      } catch(e){ toast('⚠️ ' + e.message, 5000); }
       break;
     }
     case 'heure-picker': {
@@ -1466,8 +1701,10 @@ document.addEventListener('submit', async e => {
   if (btn && document.body.contains(btn)) btn.disabled = false;
 });
 document.addEventListener('input', e => {
+  if (e.target.matches('[data-banque]')){ S.banqueQ = e.target.value; $('#banque-liste').innerHTML = listeBanque(S.banqueQ); return; }
   const f = e.target.form;
   if (!f || f.dataset.f !== 'sugg') return;
+  if (e.target.name === 'titre') f.querySelector('.choix-banque').innerHTML = htmlChoixBanque(e.target.value);
   const txt = `${f.elements.titre.value} ${f.elements.ingredients.value}`.trim();
   f.querySelector('.apercu').innerHTML = txt ? resumeFlags(f.dataset.j, txt) : '';
 });
@@ -1484,7 +1721,7 @@ function occupe(){
   if (!$('#dialogue').hidden) return true;
   const a = document.activeElement;
   if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return true;
-  if (S.sheet && ['invite','profil','nip','presence_maison','mes_heures','suggestion'].includes(S.sheet.type)) return true;
+  if (S.sheet && FEUILLES_SAISIE.includes(S.sheet.type)) return true;
   return [...document.querySelectorAll('#app input[type=text]')].some(i => i.value.trim());
 }
 setInterval(() => { if (S.sess && document.visibilityState === 'visible' && !occupe()) refresh().catch(() => {}); }, 60000);

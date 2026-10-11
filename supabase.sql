@@ -78,6 +78,30 @@ create table if not exists votes (
   primary key (jour, membre)
 );
 
+-- Banque de repas de la famille. « cle » = le nom simplifié (sans majuscules, accents,
+-- petits mots ni pluriel) : deux repas ne peuvent pas avoir la même clé (anti-doublon).
+create table if not exists plats (
+  id          uuid primary key default gen_random_uuid(),
+  nom         text not null,
+  cle         text not null,
+  ingredients text not null default '',
+  cree_par    text references membres(id) on delete set null,
+  cree        timestamptz not null default now(),
+  modifie_par text references membres(id) on delete set null,
+  modifie_le  timestamptz not null default now()
+);
+
+-- Articles d'épicerie d'un repas de la banque (une ligne libre par article, dans l'ordre).
+create table if not exists plat_articles (
+  id    uuid primary key default gen_random_uuid(),
+  plat  uuid not null references plats(id) on delete cascade,
+  texte text not null,
+  ordre int not null default 0
+);
+
+-- Chaque suggestion est rattachée à son repas de la banque (sert à la liste d'épicerie).
+alter table suggestions add column if not exists plat uuid references plats(id) on delete set null;
+
 create table if not exists journal (
   id     bigserial primary key,
   quand  timestamptz not null default now(),
@@ -115,6 +139,8 @@ create index if not exists presences_jour on presences (jour);
 create index if not exists invites_jour on invites (jour);
 create index if not exists suggestions_jour on suggestions (jour);
 create index if not exists votes_suggestion on votes (suggestion);
+create unique index if not exists plats_cle on plats (cle);
+create index if not exists plat_articles_plat on plat_articles (plat, ordre);
 create index if not exists journal_quand on journal (quand desc);
 create index if not exists presence_maison_jour on presence_maison (jour);
 
@@ -126,6 +152,8 @@ alter table presences   enable row level security;
 alter table invites     enable row level security;
 alter table suggestions enable row level security;
 alter table votes       enable row level security;
+alter table plats       enable row level security;
+alter table plat_articles enable row level security;
 alter table journal     enable row level security;
 alter table reglages    enable row level security;
 alter table horaires_souper enable row level security;
@@ -213,6 +241,39 @@ begin
     raise exception 'Cet emoji est trop long : 16 caractères au maximum.';
   end if;
   return v;
+end $$;
+
+-- Clé anti-doublon d'un nom de repas : minuscules, sans accents ni ponctuation, sans les
+-- petits mots (au, aux, de, la…), mots de plus de 4 lettres au singulier (s ou x final retiré).
+-- « Tacos aux crevettes » et « tacos crevette » donnent la même clé : « taco crevette ».
+create or replace function _cle_plat(p text) returns text
+language sql immutable as $$
+  select coalesce(string_agg(case when length(w) > 4 and w ~ '[sx]$' then left(w, -1) else w end, ' ' order by n), '')
+  from regexp_split_to_table(
+         regexp_replace(
+           lower(translate(replace(replace(replace(replace(coalesce(p, ''), 'œ', 'oe'), 'Œ', 'oe'), 'æ', 'ae'), 'Æ', 'ae'),
+                 'àâäáãåçéèêëíìîïñóòôöõúùûüýÿÀÂÄÁÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝ',
+                 'aaaaaaceeeeiiiinooooouuuuyyaaaaaaceeeeiiiinooooouuuuy')),
+           '[^a-z0-9]+', ' ', 'g'),
+         ' ') with ordinality as t(w, n)
+  where w <> '' and w not in ('a', 'au', 'aux', 'de', 'du', 'des', 'd', 'la', 'le', 'les', 'l', 'et', 'en', 'un', 'une')
+$$;
+
+-- Le repas de la banque qui correspond à ce nom ; il est créé s'il n'existe pas encore.
+-- S'il existe sans ingrédients, il reçoit ceux fournis. Renvoie null si le nom est vide.
+create or replace function _plat_pour(p_membre text, p_nom text, p_ingredients text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare k text := _cle_plat(p_nom); pid uuid; ingr text := coalesce(trim(p_ingredients), '');
+begin
+  if k = '' then return null; end if;
+  insert into plats (nom, cle, ingredients, cree_par, modifie_par)
+    values (left(trim(p_nom), 80), k, left(ingr, 200), p_membre, p_membre)
+    on conflict (cle) do nothing returning id into pid;
+  if pid is null then
+    select id into pid from plats where cle = k;
+    if ingr <> '' then update plats set ingredients = left(ingr, 200) where id = pid and ingredients = ''; end if;
+  end if;
+  return pid;
 end $$;
 
 create or replace function _notifier(p_sujet text, p_titre text, p_message text, p_tag text default 'fork_and_knife', p_priorite int default 3)
@@ -310,6 +371,9 @@ begin
     'invites',     (select coalesce(jsonb_agg(to_jsonb(i)), '[]') from invites i where jour between p_debut and p_fin),
     'suggestions', (select coalesce(jsonb_agg(to_jsonb(s)), '[]') from suggestions s where jour between p_debut and p_fin),
     'votes',       (select coalesce(jsonb_agg(to_jsonb(v)), '[]') from votes v where jour between p_debut and p_fin),
+    'plats',       (select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'nom', p.nom, 'cle', p.cle, 'ingredients', p.ingredients,
+                      'articles', (select coalesce(jsonb_agg(a.texte order by a.ordre), '[]') from plat_articles a where a.plat = p.id))
+                      order by lower(p.nom)), '[]') from plats p),
     'horaires_souper', (select coalesce(jsonb_agg(jsonb_build_object('jour', jour, 'heure', to_char(heure, 'HH24:MI'))), '[]') from horaires_souper where jour between p_debut and p_fin),
     'presence_maison', (select coalesce(jsonb_agg(jsonb_build_object('jour', jour, 'membre', membre,
                           'arrivee', case when arrivee is null then null else to_char(arrivee, 'HH24:MI') end,
@@ -465,8 +529,8 @@ declare m membres := _qui(p_jeton); nid uuid;
 begin
   if coalesce(trim(p_titre), '') = '' then raise exception 'Indique le nom du repas.'; end if;
   if p_jour < _aujourdhui() then raise exception 'Cette journée est passée.'; end if;
-  insert into suggestions (jour, titre, ingredients, propose_par)
-    values (p_jour, trim(p_titre), coalesce(trim(p_ingredients), ''), m.id) returning id into nid;
+  insert into suggestions (jour, titre, ingredients, propose_par, plat)
+    values (p_jour, trim(p_titre), coalesce(trim(p_ingredients), ''), m.id, _plat_pour(m.id, p_titre, p_ingredients)) returning id into nid;
   insert into journal (par, membre, jour, texte)
     values (m.id, m.id, p_jour, 'Suggestion pour le souper du ' || _jour_fr(p_jour) || ' : ' || trim(p_titre));
   if p_choisir then perform _choisir(m, nid); end if;
@@ -535,6 +599,65 @@ begin
     raise exception 'Le repas officiel de ce jour est déjà choisi : le vote est fermé.';
   end if;
   delete from votes where jour = p_jour and membre = m.id;
+end $$;
+
+-- Banque de repas : ajouter (p_id null) ou modifier un repas. Tout membre peut le faire.
+-- p_articles null = on ne touche pas aux articles ; sinon la liste remplace l'ancienne.
+create or replace function enregistrer_plat(p_jeton uuid, p_id uuid, p_nom text, p_ingredients text, p_articles text[])
+returns uuid language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton); k text := _cle_plat(p_nom); autre plats; pid uuid := p_id;
+begin
+  if coalesce(trim(p_nom), '') = '' or k = '' then raise exception 'Indique le nom du repas.'; end if;
+  if length(trim(p_nom)) > 80 then raise exception 'Le nom du repas est trop long (80 caractères au maximum).'; end if;
+  select * into autre from plats where cle = k and id is distinct from p_id;
+  if found then raise exception '% est déjà dans la banque.', autre.nom; end if;
+  if pid is null then
+    insert into plats (nom, cle, ingredients, cree_par, modifie_par)
+      values (trim(p_nom), k, left(coalesce(trim(p_ingredients), ''), 200), m.id, m.id) returning id into pid;
+  else
+    update plats set nom = trim(p_nom), cle = k, ingredients = left(coalesce(trim(p_ingredients), ''), 200),
+                     modifie_par = m.id, modifie_le = now()
+     where id = pid;
+    if not found then raise exception 'Ce repas n''est plus dans la banque.'; end if;
+  end if;
+  if p_articles is not null then
+    if cardinality(p_articles) > 60 then raise exception 'Trop d''articles (60 au maximum).'; end if;
+    delete from plat_articles where plat = pid;
+    insert into plat_articles (plat, texte, ordre)
+      select pid, left(trim(a), 120), row_number() over (order by n)
+        from unnest(p_articles) with ordinality as t(a, n)
+       where trim(coalesce(a, '')) <> '';
+  end if;
+  return pid;
+end $$;
+
+-- Banque de repas : ajouter plusieurs noms d'un coup (un par ligne dans l'app).
+-- Renvoie le nombre d'ajouts et les noms déjà présents (doublons repérés par la clé).
+create or replace function ajouter_plats(p_jeton uuid, p_noms text[]) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton); nom text; k text; ajoutes int := 0; existants text[] := '{}'; vus text[] := '{}'; pid uuid;
+begin
+  if cardinality(coalesce(p_noms, '{}')) > 200 then raise exception 'Trop de repas d''un coup (200 au maximum).'; end if;
+  foreach nom in array coalesce(p_noms, '{}') loop
+    nom := left(trim(coalesce(nom, '')), 80);
+    k := _cle_plat(nom);
+    continue when k = '' or k = any(vus);   -- ligne vide, ou déjà vue plus haut dans la même liste
+    vus := array_append(vus, k);
+    insert into plats (nom, cle, cree_par, modifie_par) values (nom, k, m.id, m.id)
+      on conflict (cle) do nothing returning id into pid;
+    if pid is null then existants := array_append(existants, (select p.nom from plats p where p.cle = k));
+    else ajoutes := ajoutes + 1; end if;
+  end loop;
+  return jsonb_build_object('ajoutes', ajoutes, 'existants', to_jsonb(existants));
+end $$;
+
+-- Banque de repas : retirer un repas (parents seulement). Les suggestions gardent leur nom.
+create or replace function supprimer_plat(p_jeton uuid, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  if not m.parent then raise exception 'Seuls les parents peuvent retirer un repas de la banque.'; end if;
+  delete from plats where id = p_id;
 end $$;
 
 create or replace function ajouter_membre(p_jeton uuid, p_prenom text, p_emoji text, p_couleur text, p_parent boolean)
@@ -610,6 +733,22 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+--  Banque de repas : import UNIQUE des suggestions déjà faites (dans l'ordre où elles
+--  ont été faites). Le réglage « banque_importee » empêche de recommencer : un repas
+--  retiré de la banque par un parent ne revient donc pas à la prochaine exécution.
+-- ---------------------------------------------------------------------
+do $$
+declare s suggestions;
+begin
+  if not exists (select 1 from reglages where cle = 'banque_importee') then
+    for s in select * from suggestions where plat is null order by cree loop
+      update suggestions set plat = _plat_pour(s.propose_par, s.titre, s.ingredients) where id = s.id;
+    end loop;
+    insert into reglages (cle, valeur) values ('banque_importee', now()::text);
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 --  Rappel automatique (seulement aux personnes qui n'ont pas répondu)
 -- ---------------------------------------------------------------------
 create or replace function envoyer_rappels() returns void
@@ -652,7 +791,8 @@ select cron.schedule('menage-repas', '30 3 * * 0',
 --  Droits : l'app (rôle anon) n'appelle que les fonctions publiques
 -- ---------------------------------------------------------------------
 revoke execute on function _reglage(text), _maintenant(), _aujourdhui(), _heure_fr(timestamptz), _qui(uuid),
-  _notifier(text, text, text, text, int), _choisir(membres, uuid), _verifier_emoji(text), envoyer_rappels()
+  _notifier(text, text, text, text, int), _choisir(membres, uuid), _verifier_emoji(text), envoyer_rappels(),
+  _cle_plat(text), _plat_pour(text, text, text)
   from public, anon, authenticated;
 revoke execute on function enregistrer_heure_souper(uuid, date, text) from public, authenticated;
 revoke execute on function enregistrer_presence_maison(uuid, text, date, text, text) from public, authenticated;
@@ -662,6 +802,7 @@ grant execute on function list_membres(), connexion(text, text), deconnexion(uui
   enregistrer_presence(uuid, text, date, text, text), enregistrer_invite(uuid, uuid, date, text, text[], text[]),
   supprimer_invite(uuid, uuid), proposer_repas(uuid, date, text, text, boolean), choisir_repas(uuid, uuid),
   retirer_choix(uuid, date), supprimer_suggestion(uuid, uuid), voter_repas(uuid, uuid), retirer_vote(uuid, date),
+  enregistrer_plat(uuid, uuid, text, text, text[]), ajouter_plats(uuid, text[]), supprimer_plat(uuid, uuid),
   enregistrer_profil(uuid, text, text, text, text[], text[]), changer_nip(uuid, text), reinitialiser_nip(uuid, text)
   to anon;
 
