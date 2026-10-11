@@ -15,13 +15,13 @@
 <script src="config.js"></script>
 <style>
 :root{
-  --bg:#f3f5fa;--card:#fff;--ink:#1d2433;--muted:#667085;--line:#e4e8f0;--cadre:#cbd3e0;
+  --bg:#f3f5fa;--card:#fff;--ink:#1d2433;--muted:#667085;--line:#e4e8f0;--cadre:#cbd3e0;--exemple:#b6bfcc;
   --bleu:#2563eb;--bleu-bg:#e7efff;--rose:#db2777;--rose-bg:#fde7f1;
   --ok:#15803d;--ok-bg:#dcfce7;--no:#dc2626;--no-bg:#fee2e2;--warn:#b45309;--warn-bg:#fef3c7;
   --accent:#2563eb;--shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.07);
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#0f1420;--card:#1a2130;--ink:#e8ecf4;--muted:#9aa4b8;--line:#2a3345;--cadre:#3e4b66;
+  --bg:#0f1420;--card:#1a2130;--ink:#e8ecf4;--muted:#9aa4b8;--line:#2a3345;--cadre:#3e4b66;--exemple:#58647d;
   --bleu:#7aa7ff;--bleu-bg:#1c2b4a;--rose:#f472b6;--rose-bg:#3a1d2e;
   --ok:#4ade80;--ok-bg:#16301f;--no:#f87171;--no-bg:#3a1c1c;--warn:#fbbf24;--warn-bg:#3a2d12;
   --accent:#7aa7ff;--shadow:none;
@@ -91,6 +91,8 @@ h3{font-size:1.02rem;margin:0 0 10px;display:flex;gap:6px;align-items:center;fle
 .card > .btn.ghost.sm{margin-top:8px}
 input[type=text],input[type=password],textarea{width:100%;font:inherit;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
 textarea{min-height:64px;resize:vertical}
+/* Exemples dans les champs : très pâles et en italique, pour ne pas les confondre avec une vraie entrée */
+input::placeholder,textarea::placeholder{color:var(--exemple);font-style:italic;opacity:1}
 label.f{display:block;font-weight:600;margin:12px 0 4px;font-size:.9rem}
 label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .emoji-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:8px 0 12px}
@@ -1129,7 +1131,7 @@ function vueRepas(){
       : '');
   } else liste = sug.map(s => carteSugg(j, s, parent)).join('');
   return `${enTete('Repas', 'Suggère un souper et vote pour ton préféré. Les parents décident.')}
-    <div class="actions" style="margin-top:6px"><button type="button" class="btn ghost sm" data-a="banque">📚 Banque de repas (${(S.data.plats || []).length})</button></div>
+    <div style="margin-top:8px"><button type="button" class="btn full" data-a="banque">📚 Banque de repas (${(S.data.plats || []).length}) — nos idées de soupers</button></div>
     <div class="chips">${jours.map(x => `<button class="chip${x === j ? ' on' : ''}" data-a="repas-jour" data-j="${x}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : suggDu(x).length ? '💡' : ''}</span></button>`).join('')}</div>
     <div class="card"><h3>🍽️ Souper · ${cap(jourLong(j))}</h3>
       <label class="f">Heure du souper</label>
@@ -1147,9 +1149,9 @@ function vueRepas(){
 function formSuggestion(j){
   const parent = moi().parent;
   return `<form data-f="sugg" data-j="${j}">
-        <label class="f" for="s-t">Repas</label><input type="text" id="s-t" name="titre" required maxlength="80" placeholder="Ex. : Tacos au poulet" autocomplete="off">
+        <label class="f" for="s-t">Repas</label><input type="text" id="s-t" name="titre" required maxlength="80" placeholder="Exemple : Tacos au poulet" autocomplete="off">
         <div class="choix-banque" aria-live="polite"></div>
-        <label class="f" for="s-i">Ingrédients principaux</label><input type="text" id="s-i" name="ingredients" maxlength="200" placeholder="Ex. : poulet, tortillas, fromage, salsa" autocomplete="off">
+        <label class="f" for="s-i">Ingrédients principaux</label><input type="text" id="s-i" name="ingredients" maxlength="200" placeholder="Exemple : poulet, tortillas, fromage, salsa" autocomplete="off">
         <div class="hint">Les ingrédients servent aux alertes 🚩 et ⚠️ selon les profils.</div>
         <div class="apercu" style="margin-top:8px"></div>
         ${parent ? '<label class="chk"><input type="checkbox" name="choisir"> Décider ce repas tout de suite (sans vote)</label>' : ''}
@@ -1323,10 +1325,10 @@ const FEUILLES = {
     if (id && !pl) return {titre:'📚 Repas', corps:'<div class="card"><p>Ce repas n’est plus dans la banque.</p></div>'};
     return {titre:pl ? `✏️ ${esc(pl.nom)}` : '➕ Nouveau repas', form:true,
       corps:`<div class="card"><form data-f="plat" data-id="${pl ? pl.id : ''}">
-        <label class="f" for="pl-n">Nom du repas</label><input type="text" id="pl-n" name="nom" required maxlength="80" value="${esc(pl ? pl.nom : (nom || ''))}" placeholder="Ex. : Spaghetti à la viande" autocomplete="off">
-        <label class="f" for="pl-i">Ingrédients principaux</label><input type="text" id="pl-i" name="ingredients" maxlength="200" value="${esc(pl ? pl.ingredients : '')}" placeholder="Ex. : pâtes, boeuf, tomates" autocomplete="off">
+        <label class="f" for="pl-n">Nom du repas</label><input type="text" id="pl-n" name="nom" required maxlength="80" value="${esc(pl ? pl.nom : (nom || ''))}" placeholder="Exemple : Spaghetti à la viande" autocomplete="off">
+        <label class="f" for="pl-i">Ingrédients principaux</label><input type="text" id="pl-i" name="ingredients" maxlength="200" value="${esc(pl ? pl.ingredients : '')}" placeholder="Exemple : pâtes, boeuf, tomates" autocomplete="off">
         <div class="hint">Les ingrédients servent aux alertes 🚩 et ⚠️ selon les profils.</div>
-        <label class="f" for="pl-a">🛒 Articles d’épicerie</label><textarea id="pl-a" name="articles" rows="6" placeholder="Spaghetti Catelli 450 g&#10;Sauce à spaghetti 680 ml&#10;Boeuf haché 1 lb">${esc(pl ? pl.articles.join('\n') : '')}</textarea>
+        <label class="f" for="pl-a">🛒 Articles d’épicerie</label><textarea id="pl-a" name="articles" rows="6" placeholder="Exemple :&#10;Spaghetti Catelli 450 g&#10;Sauce à spaghetti 680 ml&#10;Boeuf haché 1 lb">${esc(pl ? pl.articles.join('\n') : '')}</textarea>
         <div class="hint">Un article par ligne. Pas grave si tu ne sais pas tout : tu pourras compléter plus tard.</div>
         <button class="btn full" style="margin-top:12px">Enregistrer</button></form>
         ${pl && moi().parent ? `<div class="actions"><button type="button" class="btn danger sm" data-a="plat-retirer" data-id="${pl.id}">Retirer de la banque</button></div>` : ''}</div>`};
@@ -1334,7 +1336,7 @@ const FEUILLES = {
   plats_multi(){
     return {titre:'📚 Ajouter plusieurs repas', form:true,
       corps:`<div class="card"><form data-f="plats-multi">
-        <label class="f" for="pm-n">Un repas par ligne</label><textarea id="pm-n" name="noms" rows="10" placeholder="Spaghetti à la viande&#10;Tacos au poulet&#10;Pâté chinois"></textarea>
+        <label class="f" for="pm-n">Un repas par ligne</label><textarea id="pm-n" name="noms" rows="10" placeholder="Exemple :&#10;Spaghetti à la viande&#10;Tacos au poulet&#10;Pâté chinois"></textarea>
         <div class="hint">Les repas déjà dans la banque sont repérés et ne sont pas ajoutés en double. Tu pourras ajouter les ingrédients et les articles plus tard.</div>
         <button class="btn full" style="margin-top:12px">Ajouter à la banque</button></form></div>`};
   },
@@ -1353,9 +1355,9 @@ const FEUILLES = {
   invite({j}){
     return {titre:`🎟️ Invité au souper — ${esc(jourLong(j))}`, form:true,
       corps:`<div class="card"><form data-f="invite" data-j="${j}">
-        <label class="f" for="i-n">Nom</label><input type="text" id="i-n" name="nom" required maxlength="40" placeholder="Ex. : la blonde d'Aleck">
-        <label class="f" for="i-a">Allergies (séparées par des virgules)</label><input type="text" id="i-a" name="allergies" maxlength="200" placeholder="Ex. : arachides">
-        <label class="f" for="i-d">N'aime pas</label><input type="text" id="i-d" name="naime_pas" maxlength="200" placeholder="Ex. : champignons, poisson">
+        <label class="f" for="i-n">Nom</label><input type="text" id="i-n" name="nom" required maxlength="40" placeholder="Exemple : la blonde d'Aleck">
+        <label class="f" for="i-a">Allergies (séparées par des virgules)</label><input type="text" id="i-a" name="allergies" maxlength="200" placeholder="Exemple : arachides">
+        <label class="f" for="i-d">N'aime pas</label><input type="text" id="i-d" name="naime_pas" maxlength="200" placeholder="Exemple : champignons, poisson">
         <p class="small">Invité par : <b>${esc(moi().prenom)}</b></p>
         <button class="btn full">Ajouter l'invité</button></form></div>`};
   },
@@ -1399,7 +1401,7 @@ const FEUILLES = {
         <label class="f" for="p-e">Emoji</label>
         <div class="preview-emoji" id="p-e-preview">${renderEmoji(p.emoji, p.prenom)}</div>
         <div class="emoji-grid">${emojiGrid}</div>
-        <input type="text" id="p-e" name="emoji" maxlength="16" value="${esc(p.emoji)}" placeholder="Ex. : 👩🏽‍🦰">
+        <input type="text" id="p-e" name="emoji" maxlength="16" value="${esc(p.emoji)}" placeholder="Exemple : 👩🏽‍🦰">
         <div class="hint">Touche un emoji ci-dessus, ou écris-en un autre. Les photos et les images ne sont pas permises.</div>
         <label class="f" for="p-a">Aime (goûts et préférences)</label><textarea id="p-a" name="aime" maxlength="300">${esc(p.aime)}</textarea>
         <label class="f" for="p-d">N'aime pas (séparés par des virgules)</label><input type="text" id="p-d" name="naime_pas" maxlength="300" value="${esc((p.naime_pas || []).join(', '))}">
@@ -1410,8 +1412,8 @@ const FEUILLES = {
   ajouter_membre(){
     return {titre:'👨‍👩‍👧‍👦 Ajouter un membre', form:true,
       corps:`<div class="card"><form data-f="ajouter-membre">
-        <label class="f" for="m-prenom">Prénom</label><input type="text" id="m-prenom" name="prenom" required maxlength="40" placeholder="Ex. : Élodie">
-        <label class="f" for="m-emoji">Emoji</label><input type="text" id="m-emoji" name="emoji" maxlength="16" value="🙂" placeholder="Ex. : 🧑🏽‍🦱">
+        <label class="f" for="m-prenom">Prénom</label><input type="text" id="m-prenom" name="prenom" required maxlength="40" placeholder="Exemple : Élodie">
+        <label class="f" for="m-emoji">Emoji</label><input type="text" id="m-emoji" name="emoji" maxlength="16" value="🙂" placeholder="Exemple : 🧑🏽‍🦱">
         <label class="f" for="m-couleur">Couleur</label>
         <select id="m-couleur" name="couleur">
           <option value="bleu">Bleu</option>
