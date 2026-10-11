@@ -15,13 +15,13 @@
 <script src="config.js"></script>
 <style>
 :root{
-  --bg:#f3f5fa;--card:#fff;--ink:#1d2433;--muted:#667085;--line:#e4e8f0;
+  --bg:#f3f5fa;--card:#fff;--ink:#1d2433;--muted:#667085;--line:#e4e8f0;--cadre:#cbd3e0;
   --bleu:#2563eb;--bleu-bg:#e7efff;--rose:#db2777;--rose-bg:#fde7f1;
   --ok:#15803d;--ok-bg:#dcfce7;--no:#dc2626;--no-bg:#fee2e2;--warn:#b45309;--warn-bg:#fef3c7;
   --accent:#2563eb;--shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.07);
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#0f1420;--card:#1a2130;--ink:#e8ecf4;--muted:#9aa4b8;--line:#2a3345;
+  --bg:#0f1420;--card:#1a2130;--ink:#e8ecf4;--muted:#9aa4b8;--line:#2a3345;--cadre:#3e4b66;
   --bleu:#7aa7ff;--bleu-bg:#1c2b4a;--rose:#f472b6;--rose-bg:#3a1d2e;
   --ok:#4ade80;--ok-bg:#16301f;--no:#f87171;--no-bg:#3a1c1c;--warn:#fbbf24;--warn-bg:#3a2d12;
   --accent:#7aa7ff;--shadow:none;
@@ -144,6 +144,9 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .line{padding:4px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .chev{color:var(--muted);font-weight:700}
 .sep{border-top:1px solid var(--line);margin:12px 0}
+/* Accueil : un cadre autour de la section Lunchs, un autre autour de la section Souper */
+.cadre{border:1.5px solid var(--cadre);border-radius:12px;padding:10px 10px 8px;margin-top:10px}
+.cadre > .sub-h:first-child{margin-top:0}
 .banner{border-radius:12px;padding:10px 12px;font-size:.9rem;margin:8px 0}
 .banner.warn{background:var(--warn-bg);color:var(--warn)}
 .banner.info{background:var(--bleu-bg);color:var(--bleu)}
@@ -940,15 +943,18 @@ function carteJourAccueil(j, titre, avecLunch){
 
   return `<div class="card">
     <div class="hdr">${esc(titre)} (${esc(jourSemaine(j))})</div>
-    ${avecLunch ? `${resumeLunch(j)}<div class="sep"></div><div class="sub-h">🍽️ Souper</div>` : ''}
-    ${zoneRepasAccueil(j, r, sug)}
-    ${champHeureSouper(j, heureSouper(j))}
-    ${resumeSouper(j, gs)}
-    ${phrasesAlertes(j, txt)}
-    ${phrasesMaison(j)}
-    <div class="actions">
-      <button type="button" class="btn ghost sm" data-a="day" data-j="${j}">Voir les détails <span class="chev">›</span></button>
-      ${j >= today() ? `<button type="button" class="btn ghost sm" data-a="invite" data-j="${j}">➕ Un invité</button>` : ''}
+    ${avecLunch ? `<div class="cadre">${resumeLunch(j)}</div>` : ''}
+    <div class="cadre">
+      ${avecLunch ? '<div class="sub-h">🍽️ Souper</div>' : ''}
+      ${zoneRepasAccueil(j, r, sug)}
+      ${champHeureSouper(j, heureSouper(j))}
+      <div class="actions">
+        <button type="button" class="btn ghost sm" data-a="day" data-j="${j}">Voir les détails <span class="chev">›</span></button>
+        ${j >= today() ? `<button type="button" class="btn ghost sm" data-a="invite" data-j="${j}">➕ Un invité</button>` : ''}
+      </div>
+      ${resumeSouper(j, gs)}
+      ${phrasesAlertes(j, txt)}
+      ${phrasesMaison(j)}
     </div>
   </div>`;
 }
