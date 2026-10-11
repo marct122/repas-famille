@@ -121,6 +121,20 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .vote-zone{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
 .vote-zone-t{font-weight:800;font-size:1.05rem;margin-bottom:2px}
 .sugg-btn{margin-bottom:10px}
+/* Page Repas : carte de suggestion */
+.sugg-h{display:flex;align-items:flex-start;gap:8px}
+.sugg-h > div{flex:1;min-width:0}
+.btn-icone{flex:none;width:44px;height:44px;border-radius:999px;border:0;background:var(--no-bg);color:var(--no);font-size:1.1rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.tag.ok{background:var(--ok);color:var(--card);margin-bottom:4px}
+.alertes{margin-top:4px}
+.alerte{font-size:.9rem;padding:2px 0}
+.alerte.all{color:var(--no);font-weight:700}
+.alerte.dis{color:var(--warn)}
+.alerte.ok{color:var(--muted);font-size:.84rem}
+.ligne-parents{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
+.ligne-parents .lp-t{color:var(--muted);font-size:.84rem}
+.ligne-parents .lp-b{margin-left:auto}
+.autres-toggle{width:100%;min-height:44px;background:none;border:0;color:var(--ink);font:inherit;font-weight:700;text-align:left;cursor:pointer;padding:8px 2px}
 .card.done{border:1.5px solid var(--ok);background:var(--ok-bg)}
 .card.done .btn.ok{background:var(--ok);color:#fff}
 .hdr{font-weight:800;font-size:1.2rem;color:var(--ink);margin-bottom:8px}
@@ -606,7 +620,7 @@ const Demo = (() => {
 /* =====================================================================
    État et aides
    ===================================================================== */
-const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null, modif:false};
+const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null, modif:false, autres:{}};
 const membre = id => S.data.membres.find(m => m.id === id);
 const prenom = id => (membre(id) || {}).prenom || id || '?';
 const moi = () => membre(S.data.moi);
@@ -681,12 +695,12 @@ function resumeFlags(j, txt){
   const all = [], dis = [];
   for (const c of convives(j)){
     const f = drapeaux(txt, c);
-    for (const x of f.all) all.push(`<div><span class="flag all">${esc(phraseAllergie(c.label, x))}</span></div>`);
-    for (const x of f.dis) dis.push(`<div><span class="flag dis">${esc(phraseGout(c.label, x))}</span></div>`);
+    for (const x of f.all) all.push(`<div class="alerte all">${esc(phraseAllergie(c.label, x))}</div>`);
+    for (const x of f.dis) dis.push(`<div class="alerte dis">${esc(phraseGout(c.label, x))}</div>`);
   }
   const out = [...all, ...dis];   // les allergies d'abord
-  if (!out.length) return `<span class="flag ok">👍 Personne n'a de problème connu avec ce repas</span>`;
-  return out.join('');
+  if (!out.length) return `<div class="alerte ok">✔️ Aucun problème connu</div>`;
+  return `<div class="alertes">${out.join('')}</div>`;
 }
 function enTete(titre, sous){
   return `<div class="top"><h1>${titre}</h1></div>
@@ -836,8 +850,10 @@ function resumeLunch(j){
 // alignés à droite, s'ils ne tiennent pas à côté (téléphone étroit).
 // - Pas mon vote : « Mon choix » gris pâle (un toucher vote, ou déplace mon vote ici).
 // - Mon vote : « 👍 Mon choix » vert, qui ne fait rien au toucher, puis « Retirer mon vote ».
-function ligneVotes(j, s, titre = ''){
+// masquerVide : sur la carte du souper décidé (page Repas), rien si personne n'a voté.
+function ligneVotes(j, s, titre = '', masquerVide = false){
   const qui = votantsDe(s.id), mien = monVote(j);
+  if (masquerVide && !qui.length && !voteOuvert(j)) return '';
   const noms = qui.length ? `👍 <b>${qui.length}</b> ${qui.map(m => nomTag(m)).join(' ')}` : '<span class="small">Pas encore de vote</span>';
   let boutons = '';
   if (voteOuvert(j)){
@@ -856,13 +872,17 @@ function zoneRepasAccueil(j, r, sug){
     return `<div class="meal"><div class="meal-t">🍽️ ${esc(r.titre)}</div>${r.ingredients ? `<div class="small">${esc(r.ingredients)}</div>` : ''}</div>`
       + avec.map(s => `<div class="line small">👍 ${esc(s.titre)} : ${esc(votantsDe(s.id).map(m => m.prenom).join(', '))}</div>`).join('');
   }
-  const bouton = j >= today() ? `<button type="button" class="btn ghost full sugg-btn" data-a="suggerer" data-j="${j}">${sug.length ? 'Faire une autre suggestion de repas' : 'Faire une suggestion de repas'}</button>` : '';
+  const bouton = boutonSuggestion(j, sug);
   if (!sug.length) return bouton;
   return `<div class="vote-zone">
       <div class="vote-zone-t">Indique ta préférence</div>
       ${sug.length > 1 ? '<div class="small">Comme il y a plusieurs suggestions de repas, nous devons procéder par vote</div>' : ''}
       ${sug.map(s => `<div class="vote">${ligneVotes(j, s, `<div class="vote-t">${esc(s.titre)}</div>`)}</div>`).join('')}
     </div>${bouton}`;
+}
+// Le bouton qui ouvre la fenêtre de suggestion (accueil et page Repas).
+function boutonSuggestion(j, sug){
+  return j >= today() ? `<button type="button" class="btn ghost full sugg-btn" data-a="suggerer" data-j="${j}">${sug.length ? 'Faire une autre suggestion de repas' : 'Faire une suggestion de repas'}</button>` : '';
 }
 /* Une carte de jour, en résumé (ce soir / demain) */
 function carteJourAccueil(j, titre, avecLunch){
@@ -938,8 +958,17 @@ function vueRepas(){
   if (!S.repasJour || S.repasJour < t) S.repasJour = t;
   const jours = [...Array(14)].map((_, i) => addDays(t, i)), j = S.repasJour, sug = suggDu(j), parent = moi().parent;
   const heure = (S.data.horaires_souper || []).find(x => x.jour === j)?.heure || '';
-  const conv = convives(j);
-  return `${enTete('Repas', 'Suggère un souper; Nadine ou Marc choisissent le repas officiel.')}
+  const conv = convives(j), r = repasChoisi(j);
+  // Souper décidé : sa carte d'abord, les autres suggestions repliées (dépliables d'un toucher).
+  let liste;
+  if (!sug.length) liste = '<p class="muted">Aucune suggestion pour ce jour.</p>';
+  else if (r){
+    const autres = sug.filter(s => s.id !== r.id), ouvert = !!S.autres[j];
+    liste = carteSugg(j, r, parent) + (autres.length
+      ? `<button type="button" class="autres-toggle" data-a="autres" data-j="${j}" aria-expanded="${ouvert}">${ouvert ? '▾' : '▸'} Autres suggestions (${autres.length})</button>${ouvert ? autres.map(s => carteSugg(j, s, parent)).join('') : ''}`
+      : '');
+  } else liste = sug.map(s => carteSugg(j, s, parent)).join('');
+  return `${enTete('Repas', 'Suggère un souper et vote pour ton préféré. Les parents décident.')}
     <div class="chips">${jours.map(x => `<button class="chip${x === j ? ' on' : ''}" data-a="repas-jour" data-j="${x}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : suggDu(x).length ? '💡' : ''}</span></button>`).join('')}</div>
     <div class="card"><h3>🍽️ Souper · ${cap(jourLong(j))}</h3>
       <label class="f">Heure du souper</label>
@@ -947,10 +976,10 @@ function vueRepas(){
         ? `<div class="actions" style="margin-top:4px"><button type="button" id="heure-souper" class="time-display" data-a="ouvrir-heure" data-j="${j}" aria-label="Choisir l’heure du souper, format 24 heures"><span>${heure ? esc(heure) : 'HH:MM'}</span><span aria-hidden="true">🕒</span></button></div>`
         : `<div style="margin-top:4px">${heure ? '🕒 <b>' + esc(heure) + '</b>' : '<span class="small">Pas encore fixée</span>'}</div>
            <div class="hint">Seuls les parents peuvent fixer l'heure du souper.</div>`}
+      ${r ? '' : `<div style="margin-top:10px">${boutonSuggestion(j, sug)}</div>`}
       <div class="small">Présents ou en attente : ${conv.length ? esc(conv.map(c => c.label).join(', ')) : 'personne pour l\'instant'}</div>
-      ${sug.length ? sug.map(s => carteSugg(j, s, parent)).join('') : '<p class="muted">Aucune suggestion pour ce jour.</p>'}
-    </div>
-    <div class="card"><h3>💡 Faire une suggestion de repas</h3>${formSuggestion(j)}</div>`;
+      ${liste}
+    </div>`;
 }
 // Le formulaire de suggestion, partagé par la page Repas et la fenêtre ouverte depuis l'accueil.
 // Il porte son jour (data-j) : l'envoi ne dépend donc pas du jour choisi dans la page Repas.
@@ -961,25 +990,33 @@ function formSuggestion(j){
         <label class="f" for="s-i">Ingrédients principaux</label><input type="text" id="s-i" name="ingredients" maxlength="200" placeholder="Ex. : poulet, tortillas, fromage, salsa" autocomplete="off">
         <div class="hint">Les ingrédients servent aux alertes 🚩 et ⚠️ selon les profils.</div>
         <div class="apercu" style="margin-top:8px"></div>
-        ${parent ? '<label class="chk"><input type="checkbox" name="choisir"> En faire directement le repas officiel</label>' : ''}
+        ${parent ? '<label class="chk"><input type="checkbox" name="choisir"> Décider ce repas tout de suite (sans vote)</label>' : ''}
         <button class="btn full" style="margin-top:10px">${parent ? 'Ajouter' : 'Suggérer'}</button>
       </form>`;
 }
+// Carte d'une suggestion (page Repas), toujours dans le même ordre :
+// nom + 🗑️ · suggéré/décidé par · alertes · votes + « Mon choix » · ligne « Parents : » (parents seulement).
 function carteSugg(j, s, parent){
-  const cp = s.choisi ? membre(s.choisi_par) : null, m = moi();
+  const m = moi(), r = repasChoisi(j);
+  const cp = s.choisi ? membre(s.choisi_par) : null;
+  const cr = r ? membre(r.choisi_par) : null;
+  const verrou = !!(cr && cr.priorite > m.priorite);          // souper décidé par un rang plus élevé
   const peutRetirer = parent && (!cp || cp.priorite <= m.priorite);
-  const boutons = [
-    parent && !s.choisi ? `<button class="btn ok sm" data-a="choisir" data-id="${s.id}">✅ Choisir ce repas</button>` : '',
-    s.choisi && peutRetirer ? `<button class="btn ghost sm" data-a="retirer-choix" data-j="${j}">Retirer le choix</button>` : '',
-    (s.propose_par === m.id && !s.choisi) || peutRetirer ? `<button class="btn danger sm" data-a="del-sugg" data-id="${s.id}">Supprimer</button>` : ''
-  ].join('');
+  const peutSupprimer = (s.propose_par === m.id && !s.choisi) || peutRetirer;
+  const poubelle = peutSupprimer ? `<button type="button" class="btn-icone" data-a="del-sugg" data-id="${s.id}" aria-label="Supprimer ${esc(s.titre)}">🗑️</button>` : '';
+  let action = '';
+  if (parent){
+    if (s.choisi) action = peutRetirer
+      ? `<button type="button" class="btn ghost sm lp-b" data-a="retirer-choix" data-j="${j}">Annuler la décision</button>`
+      : `<span class="small lp-b">🔒 Décidé par ${esc(prenom(s.choisi_par))}</span>`;
+    else if (!verrou) action = `<button type="button" class="btn neutre sm lp-b" data-a="choisir" data-id="${s.id}">Décider ce repas</button>`;
+  }
   return `<div class="sugg${s.choisi ? ' chosen' : ''}">
-    ${s.choisi ? '<span class="tag">✅ Repas officiel</span>' : ''}
-    <div class="meal-t">${esc(s.titre)}</div>${s.ingredients ? `<div class="small">${esc(s.ingredients)}</div>` : ''}
-    <div class="small">Suggéré par <b>${esc(prenom(s.propose_par))}</b> ${quand(s.cree)}${s.choisi ? ` · choisi par <b>${esc(prenom(s.choisi_par))}</b> ${quand(s.choisi_le)}` : ''}</div>
-    <div style="margin-top:6px">${resumeFlags(j, texteRepas(s))}</div>
-    ${ligneVotes(j, s)}
-    ${boutons ? `<div class="actions">${boutons}</div>` : ''}</div>`;
+    <div class="sugg-h"><div>${s.choisi ? '<span class="tag ok">✅ C\'est le souper!</span>' : ''}<div class="meal-t">${esc(s.titre)}</div>${s.ingredients ? `<div class="small">${esc(s.ingredients)}</div>` : ''}</div>${poubelle}</div>
+    <div class="small">Suggéré par <b>${esc(prenom(s.propose_par))}</b> ${quand(s.cree)}${s.choisi ? ` · décidé par <b>${esc(prenom(s.choisi_par))}</b> ${quand(s.choisi_le)}` : ''}</div>
+    ${resumeFlags(j, texteRepas(s))}
+    ${ligneVotes(j, s, '', !!s.choisi)}
+    ${action ? `<div class="ligne-parents"><span class="lp-t">Parents :</span>${action}</div>` : ''}</div>`;
 }
 function vueFamille(){
   const m0 = moi();
@@ -1264,11 +1301,24 @@ document.addEventListener('click', async e => {
     case 'repas-jour': S.repasJour = d.j; render(); break;
     case 'ouvrir-heure': ouvrir('heure_souper', {j:d.j}); break;
     case 'effacer-heure': if (await act('enregistrer_heure_souper', {p_jour:d.j, p_heure:''}, 'Heure du souper retirée')) fermer(); break;
-    case 'choisir': await act('choisir_repas', {p_id:d.id}, '✅ Repas officiel choisi'); break;
+    case 'choisir': {
+      // Remplacer un souper déjà décidé demande une confirmation.
+      const s = S.data.suggestions.find(x => x.id === d.id), r = s && repasChoisi(s.jour);
+      if (r && r.id !== d.id && !confirm(`Remplacer ${r.titre} par ${s.titre} comme souper ?`)) break;
+      await act('choisir_repas', {p_id:d.id}, '✅ Repas décidé'); break;
+    }
+    case 'autres': S.autres[d.j] = !S.autres[d.j]; render(); break;
     case 'voter': el.disabled = true; await act('voter_repas', {p_id:d.id}, '👍 Vote enregistré'); el.disabled = false; break;
     case 'retirer-vote': el.disabled = true; await act('retirer_vote', {p_jour:d.j}, 'Vote retiré'); el.disabled = false; break;
-    case 'retirer-choix': if (confirm('Retirer le repas officiel de ce jour ?')) await act('retirer_choix', {p_jour:d.j}, 'Choix retiré'); break;
-    case 'del-sugg': if (confirm('Supprimer cette suggestion ?')) await act('supprimer_suggestion', {p_id:d.id}, 'Suggestion supprimée'); break;
+    case 'retirer-choix': if (confirm('Annuler la décision pour ce jour ?')) await act('retirer_choix', {p_jour:d.j}, 'Décision annulée'); break;
+    case 'del-sugg': {
+      // La confirmation dit ce qui sera perdu : les votes, et la décision s'il y en a une.
+      const s = S.data.suggestions.find(x => x.id === d.id); if (!s) break;
+      const n = votantsDe(s.id).length;
+      const msg = `Supprimer ${s.titre} ?` + (n === 1 ? ' Le vote sera effacé.' : n > 1 ? ` Les ${n} votes seront effacés.` : '') + (s.choisi ? ' Le souper ne sera plus décidé.' : '');
+      if (confirm(msg)) await act('supprimer_suggestion', {p_id:d.id}, 'Suggestion supprimée');
+      break;
+    }
     case 'sem': S.semaine = Math.max(0, S.semaine + (+d.d)); try { await refresh(); } catch(err){ toast('⚠️ ' + err.message); } break;
     case 'profil': ouvrir('profil', {m:d.m}); break;
     case 'ajouter-membre': ouvrir('ajouter_membre', {}); break;
@@ -1293,10 +1343,15 @@ document.addEventListener('submit', async e => {
   const btn = f.querySelector('button'); if (btn) btn.disabled = true;
   let ok = false;
   switch (f.dataset.f){
-    case 'sugg':
-      ok = await act('proposer_repas', {p_jour:f.dataset.j, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas officiel ajouté' : '💡 Suggestion ajoutée');
+    case 'sugg': {
+      // Doublon (sans tenir compte des majuscules, des accents ni des espaces autour) : on avertit, on laisse ajouter.
+      const cle = x => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const dbl = S.data.suggestions.find(x => x.jour === f.dataset.j && cle(x.titre) === cle(v.titre));
+      if (dbl && !confirm(`${dbl.titre} est déjà suggéré ce jour-là.${voteOuvert(f.dataset.j) ? ' Vote plutôt pour lui!' : ''} Ajouter quand même ?`)) break;
+      ok = await act('proposer_repas', {p_jour:f.dataset.j, p_titre:v.titre.trim(), p_ingredients:(v.ingredients || '').trim(), p_choisir:!!v.choisir}, v.choisir ? '✅ Repas décidé' : '💡 Suggestion ajoutée');
       if (ok && S.sheet && S.sheet.type === 'suggestion') fermer();
       break;
+    }
     case 'heure-picker': {
       const heure = `${v.heure_h}:${v.heure_m}`;
       ok = await act('enregistrer_heure_souper', {p_jour:f.dataset.j, p_heure:heure}, `Heure du souper enregistrée : ${heure}`);
