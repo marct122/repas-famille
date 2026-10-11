@@ -864,8 +864,8 @@ function resumeLunch(j){
   if (gr.froid.length) l.push(ligneCat("🥪 À l'école", gr.froid.length, pastilles(gr.froid)));
   if (gr.chaud.length) l.push(ligneCat('🍲 À la maison', gr.chaud.length, pastilles(gr.chaud)));
   if (gr.aucun.length) l.push(ligneCat('🚫 Pas de lunch', gr.aucun.length, pastilles(gr.aucun)));
-  if (gr.auto.length) l.push(ligneCat('❔ Pas répondu', gr.auto.length, pastilles(gr.auto, 'attend'), `Pas de réponse avant ${lim} = pas de lunch.`));
-  if (gr.attente.length) l.push(ligneCat('⏳ En attente de réponse', gr.attente.length, pastilles(gr.attente, 'attend'), `Réponse attendue avant ${lim}.`));
+  if (gr.auto.length) l.push(ligneCat('❓ Pas répondu', gr.auto.length, pastilles(gr.auto, 'attend'), `Pas de réponse avant ${lim} = pas de lunch.`));
+  if (gr.attente.length) l.push(ligneCat('❓ En attente de réponse', gr.attente.length, pastilles(gr.attente, 'attend'), `Réponse attendue avant ${lim}.`));
   return `<div class="sub-h">🥪 Lunchs</div>${l.join('')}`;
 }
 // Souper d'un jour : combien, qui est présent (avec les invités), qui est absent, qui n'a pas répondu.
@@ -877,8 +877,8 @@ function resumeSouper(j, gs){
   const l = [`<div class="count">🍽️ <b>Au souper : ${nT}</b>${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}</div>`];
   if (nT) l.push(ligneCat('✅ Présents', nT, pastilles(g.present) + invites));
   if (g.absent.length) l.push(ligneCat('❌ Absents', g.absent.length, pastilles(g.absent)));
-  if (g.auto.length) l.push(ligneCat('❔ Pas répondu', g.auto.length, pastilles(g.auto, 'attend'), `Pas de réponse avant ${lim} = pas au souper.`));
-  if (g.attente.length) l.push(ligneCat('⏳ En attente de réponse', g.attente.length, pastilles(g.attente, 'attend'), `Réponse attendue avant ${lim}.`));
+  if (g.auto.length) l.push(ligneCat('❓ Pas répondu', g.auto.length, pastilles(g.auto, 'attend'), `Pas de réponse avant ${lim} = pas au souper.`));
+  if (g.attente.length) l.push(ligneCat('❓ En attente de réponse', g.attente.length, pastilles(g.attente, 'attend'), `Réponse attendue avant ${lim}.`));
   return l.join('');
 }
 
@@ -964,7 +964,7 @@ function vueAccueil(){
     : `<div class="banner info">🕚 Il est passé ${HL()}h. Sans réponse, une personne est comptée absente au souper et sans lunch demain. Tu peux encore changer ta réponse : l'heure du changement sera notée.</div>`;
   return `${enTete(`Bonjour ${esc(moi().prenom)} ${renderEmoji(moi().emoji, moi().prenom)}`, cap(jourLong(t)))}${bandeau}
     ${manque || S.modif ? carteQuestions(t, dm, id, manque) : carteRepondu(t, dm, id)}
-    ${carteJourAccueil(t, "Aujourd'hui", true)}
+    ${carteJourAccueil(t, 'Aujourd’hui', true)}
     ${carteJourAccueil(dm, 'Demain', true)}`;
 }
 function vueSemaine(){
