@@ -46,6 +46,8 @@ h3{font-size:1.02rem;margin:0 0 10px;display:flex;gap:6px;align-items:center;fle
 .who.bleu{background:var(--bleu-bg);color:var(--bleu)}
 .who.rose{background:var(--rose-bg);color:var(--rose)}
 .who.invite{background:var(--warn-bg);color:var(--warn)}
+.who.attend{background:transparent;border:1.5px dashed currentColor;padding:1px 9px 1px 6px}
+.cat-n{font-size:.84rem;color:var(--muted);margin:-2px 0 4px}
 .row{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line);flex-wrap:wrap}
 .list .row:first-child{border-top:0}
 .flags{flex-basis:100%;display:flex;flex-direction:column;align-items:flex-start;gap:3px}
@@ -680,7 +682,7 @@ function convives(j){
 }
 
 /* ---------- Petits morceaux d'interface ---------- */
-const nomTag = m => m ? `<span class="who ${m.couleur}">${renderEmoji(m.emoji, m.prenom)} ${esc(m.prenom)}</span>` : '';
+const nomTag = (m, cls = '') => m ? `<span class="who ${m.couleur}${cls ? ' ' + cls : ''}">${renderEmoji(m.emoji, m.prenom)} ${esc(m.prenom)}</span>` : '';
 function pill(v, m){
   const e = m && m.couleur === 'rose' ? 'e' : '';
   const t = {present:`Présent${e}`, absent:`Absent${e}`, attente:'Pas encore répondu', auto:`Absent${e} (pas de réponse)`}[v];
@@ -847,17 +849,37 @@ function phrasesMaison(j){
 }
 
 /* Le bloc des lunchs, en résumé */
+// Une catégorie : « ✅ Présents (2) » suivi des pastilles, et une note facultative en dessous.
+function ligneCat(titre, n, pastilles, note = ''){
+  return `<div class="line"><b>${titre} (${n})</b> ${pastilles}</div>${note ? `<div class="cat-n">${note}</div>` : ''}`;
+}
+const pastilles = (a, cls = '') => a.map(m => nomTag(m, cls)).join(' ');
+// Lunchs d'un jour : qui en a un (école / maison), qui n'en veut pas, qui n'a pas répondu.
+// « Pas répondu » (passé la limite = pas de lunch) est séparé de « Pas de lunch » (réponse donnée).
 function resumeLunch(j){
-  const gr = {froid:[], chaud:[], attente:[], aucun:[]};
-  for (const m of S.data.membres){ const v = statutLunch(j, m.id).v; gr[v === 'auto' ? 'aucun' : v].push(m); }
-  const noms = a => a.map(m => nomTag(m)).join(' ');
-  const l = [];
-  if (gr.froid.length) l.push(`<div class="line">🥪 <b>À l'école (${gr.froid.length})</b> : ${noms(gr.froid)}</div>`);
-  if (gr.chaud.length) l.push(`<div class="line">🍲 <b>À la maison (${gr.chaud.length})</b> : ${noms(gr.chaud)}</div>`);
-  if (!gr.froid.length && !gr.chaud.length) l.push('<div class="line">Personne n\'a besoin de lunch.</div>');
-  else if (gr.aucun.length) l.push(`<div class="line small">Pas besoin de lunch : ${esc(gr.aucun.map(m => m.prenom).join(', '))}</div>`);
-  if (gr.attente.length) l.push(`<div class="line small late">⏳ Pas encore répondu : ${esc(gr.attente.map(m => m.prenom).join(', '))}</div>`);
+  const gr = {froid:[], chaud:[], aucun:[], auto:[], attente:[]};
+  for (const m of S.data.membres) gr[statutLunch(j, m.id).v].push(m);
+  const lim = limTxt(limiteLunch(j)), l = [];
+  if (!gr.froid.length && !gr.chaud.length) l.push('<div class="line">Aucun lunch à préparer.</div>');
+  if (gr.froid.length) l.push(ligneCat("🥪 À l'école", gr.froid.length, pastilles(gr.froid)));
+  if (gr.chaud.length) l.push(ligneCat('🍲 À la maison', gr.chaud.length, pastilles(gr.chaud)));
+  if (gr.aucun.length) l.push(ligneCat('🚫 Pas de lunch', gr.aucun.length, pastilles(gr.aucun)));
+  if (gr.auto.length) l.push(ligneCat('❔ Pas répondu', gr.auto.length, pastilles(gr.auto, 'attend'), `Pas de réponse avant ${lim} = pas de lunch.`));
+  if (gr.attente.length) l.push(ligneCat('⏳ En attente de réponse', gr.attente.length, pastilles(gr.attente, 'attend'), `Réponse attendue avant ${lim}.`));
   return `<div class="sub-h">🥪 Lunchs</div>${l.join('')}`;
+}
+// Souper d'un jour : combien, qui est présent (avec les invités), qui est absent, qui n'a pas répondu.
+function resumeSouper(j, gs){
+  const g = {present:[], absent:[], auto:[], attente:[]};
+  for (const m of S.data.membres) g[statutSouper(j, m.id).v].push(m);
+  const nP = g.present.length, nT = nP + gs.length, lim = limTxt(limiteSouper(j));
+  const invites = gs.map(x => ` <span class="who invite">🎟️ ${esc(x.nom)}</span>`).join('');
+  const l = [`<div class="count">🍽️ <b>Au souper : ${nT}</b>${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}</div>`];
+  if (nT) l.push(ligneCat('✅ Présents', nT, pastilles(g.present) + invites));
+  if (g.absent.length) l.push(ligneCat('❌ Absents', g.absent.length, pastilles(g.absent)));
+  if (g.auto.length) l.push(ligneCat('❔ Pas répondu', g.auto.length, pastilles(g.auto, 'attend'), `Pas de réponse avant ${lim} = pas au souper.`));
+  if (g.attente.length) l.push(ligneCat('⏳ En attente de réponse', g.attente.length, pastilles(g.attente, 'attend'), `Réponse attendue avant ${lim}.`));
+  return l.join('');
 }
 
 // Ligne des votes d'une suggestion : à gauche, le titre (facultatif) et qui en a envie ;
@@ -915,21 +937,13 @@ function carteJourAccueil(j, titre, avecLunch){
   const r = repasChoisi(j), sug = suggDu(j), gs = invitesDu(j);
   const txt = r ? texteRepas(r) : '';
 
-  const g = {present:[], attente:[], absent:[]};
-  for (const m of S.data.membres){ const v = statutSouper(j, m.id).v; g[v === 'auto' ? 'absent' : v].push(m); }
-  const nP = g.present.length, nT = nP + gs.length;
-  const lignes = [`<div class="count"><b>${nT}</b> à table${gs.length ? ` (${nP} + ${gs.length} invité${gs.length > 1 ? 's' : ''})` : ''}</div>`];
-  if (g.present.length) lignes.push(`<div class="line">✅ ${g.present.map(m => nomTag(m)).join(' ')}</div>`);
-  if (gs.length) lignes.push(`<div class="line">✅ ${gs.map(x => `<span class="who invite">🎟️ ${esc(x.nom)}</span>`).join(' ')}</div>`);
-  if (g.absent.length) lignes.push(`<div class="line">❌ ${g.absent.map(m => nomTag(m)).join(' ')}</div>`);
-  if (g.attente.length) lignes.push(`<div class="line small late">⏳ ${esc(g.attente.map(m => m.prenom).join(', '))} ${g.attente.length > 1 ? "n'ont" : "n'a"} pas encore répondu</div>`);
 
   return `<div class="card">
     <div class="hdr">${esc(titre)} (${esc(jourSemaine(j))})</div>
     ${avecLunch ? `${resumeLunch(j)}<div class="sep"></div><div class="sub-h">🍽️ Souper</div>` : ''}
     ${zoneRepasAccueil(j, r, sug)}
     ${champHeureSouper(j, heureSouper(j))}
-    ${lignes.join('')}
+    ${resumeSouper(j, gs)}
     ${phrasesAlertes(j, txt)}
     ${phrasesMaison(j)}
     <div class="actions">
@@ -950,7 +964,7 @@ function vueAccueil(){
     : `<div class="banner info">🕚 Il est passé ${HL()}h. Sans réponse, une personne est comptée absente au souper et sans lunch demain. Tu peux encore changer ta réponse : l'heure du changement sera notée.</div>`;
   return `${enTete(`Bonjour ${esc(moi().prenom)} ${renderEmoji(moi().emoji, moi().prenom)}`, cap(jourLong(t)))}${bandeau}
     ${manque || S.modif ? carteQuestions(t, dm, id, manque) : carteRepondu(t, dm, id)}
-    ${carteJourAccueil(t, 'Ce soir', false)}
+    ${carteJourAccueil(t, "Aujourd'hui", true)}
     ${carteJourAccueil(dm, 'Demain', true)}`;
 }
 function vueSemaine(){
