@@ -138,6 +138,21 @@ label.chk{display:flex;gap:8px;align-items:center;margin:12px 0;font-weight:600}
 .btn-icone.panier{background:var(--card);color:var(--bleu)}
 .epi-souper{padding:8px 0;border-top:1px solid var(--line)}
 .epi-souper:first-of-type{border-top:0}
+/* Épicerie partagée : cases à cocher, ajouts à la main, zone « Réglé » en gris pâle */
+.epi-ajout{display:flex;gap:8px;margin-top:4px}
+.epi-ajout input{flex:1;min-width:0}
+.epi-liste{list-style:none;margin:4px 0 0;padding:0}
+.epi-art{display:flex;align-items:center;gap:4px;border-top:1px solid var(--line)}
+.epi-art:first-child{border-top:0}
+.epi-case{flex:1;min-width:0;display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 2px;background:none;border:0;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.epi-boite{flex:none;width:22px;height:22px;border:2px solid var(--muted);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;line-height:1}
+.epi-txt{min-width:0;overflow-wrap:anywhere}
+.epi-art .btn-icone{background:none;color:var(--muted)}
+.epi-art.fait .epi-case{color:var(--muted)}
+.epi-art.fait .epi-txt{text-decoration:line-through;opacity:.75}
+.epi-art.fait .epi-boite{border-color:var(--ok);background:var(--ok);color:var(--card)}
+.epi-regle{margin-top:6px;padding-top:10px;border-top:1.5px dashed var(--line)}
+.epi-regle h3{color:var(--muted)}
 /* Page Repas : carte de suggestion */
 .sugg-h{display:flex;align-items:flex-start;gap:8px}
 .sugg-h > div{flex:1;min-width:0}
@@ -411,6 +426,28 @@ async function act(fn, args, okMsg){
     return true;
   } catch(e){ toast('⚠️ ' + e.message, 5000); return false; }
 }
+// Épicerie : on écrit, puis on relit seulement la liste (plus léger que refresh()).
+// epiVersion sert à ignorer une relecture automatique partie AVANT une écriture (elle serait périmée).
+let epiVersion = 0;
+async function actEpi(fn, args, okMsg){
+  epiVersion++;
+  try {
+    await rpc(fn, {p_jeton:S.sess.jeton, ...args});
+    const r = await rpc('epicerie', {p_jeton:S.sess.jeton});
+    epiVersion++;
+    S.data.epicerie = r; renderEpi();
+    if (okMsg) toast(okMsg);
+    return true;
+  } catch(e){ toast('⚠️ ' + e.message, 5000); return false; }
+}
+// Redessine la page en gardant ce qui est tapé dans le champ « Ajouter » (et le curseur).
+function renderEpi(){
+  const i = $('#epi-texte'), val = i ? i.value : '', actif = !!i && document.activeElement === i;
+  const pos = actif ? [i.selectionStart, i.selectionEnd] : null;
+  render();
+  const n = $('#epi-texte');
+  if (n){ n.value = val; if (actif){ n.focus({preventScroll:true}); try { n.setSelectionRange(pos[0], pos[1]); } catch(e){} } }
+}
 
 /* ---------- Mode démo : mêmes fonctions que supabase.sql, stockées sur l'appareil ---------- */
 const SEED = [
@@ -422,7 +459,7 @@ const SEED = [
 ];
 const Demo = (() => {
   const K = 'repas-demo-v1';
-  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], votes:[], plats:[], horaires_souper:[], presence_maison:[], journal:[]});
+  const seed = () => ({membres:SEED.map(m => ({...m, nip:null, sujet_ntfy:'repas-demo-' + m.id})), sessions:{}, presences:[], invites:[], suggestions:[], votes:[], plats:[], horaires_souper:[], presence_maison:[], journal:[], epicerie:{jours:[], coches:[], ajouts:[]}});
   // Le repas de la banque qui correspond à ce nom (créé s'il n'existe pas), comme _plat_pour.
   const platPourDans = (base, membre, nom, ingr) => {
     const k = clePlat(nom); if (!k) return null;
@@ -438,6 +475,7 @@ const Demo = (() => {
     cur.presence_maison = cur.presence_maison || [];
     cur.votes = cur.votes || [];
     cur.plats = cur.plats || [];
+    cur.epicerie = cur.epicerie || {jours:[], coches:[], ajouts:[]};
     // Comme supabase.sql : import UNIQUE des suggestions déjà faites dans la banque.
     if (!cur.banqueImportee){
       for (const s of [...cur.suggestions].sort((a, b) => a.cree < b.cree ? -1 : 1)) if (!s.plat) s.plat = platPourDans(cur, s.propose_par, s.titre, s.ingredients);
@@ -481,6 +519,19 @@ const Demo = (() => {
   const notifParents = (titre, msg) => setTimeout(() => toast(`📣 (démo) Notification envoyée aux parents — ${titre} : ${msg}`, 7000), 400);
   const LIB = {souper:{present:'présent(e)', absent:'absent(e)'}, lunch:{aucun:'aucun', froid:'froid (école)', chaud:'chaud (maison)'}};
   const prioDe = id => (M(id) || {priorite:0}).priorite;
+  // Comme _epicerie() : jours à partir d'aujourd'hui, coches d'aujourd'hui seulement, tous les ajouts.
+  const epicerieVue = () => {
+    const E = db.epicerie, t = today();
+    return JSON.parse(JSON.stringify({
+      jours:E.jours.filter(x => x.jour >= t).map(x => x.jour).sort(),
+      coches:E.coches.filter(x => x.jour === t).map(x => ({cle:x.cle, par:x.par})).sort((a, b) => a.cle < b.cle ? -1 : 1),
+      ajouts:E.ajouts}));
+  };
+  // Comme _epicerie_menage() : on efface les jours passés et les coches d'un jour passé.
+  const epicerieMenage = () => {
+    const E = db.epicerie, t = today();
+    E.jours = E.jours.filter(x => x.jour >= t); E.coches = E.coches.filter(x => x.jour >= t);
+  };
   function choisir(m, s){
     if (!m.parent) err('Seuls Nadine et Marc peuvent choisir le repas officiel.');
     const cur = db.suggestions.find(x => x.jour === s.jour && x.choisi);
@@ -534,7 +585,54 @@ const Demo = (() => {
         presences:db.presences.filter(dans), invites:db.invites.filter(dans), suggestions:db.suggestions.filter(dans), votes:db.votes.filter(dans),
         plats:db.plats.map(x => ({id:x.id, nom:x.nom, cle:x.cle, ingredients:x.ingredients, articles:[...x.articles]})),
         horaires_souper:db.horaires_souper.filter(dans), presence_maison:db.presence_maison.filter(dans),
-        journal:db.journal.slice(0,40)};
+        epicerie:epicerieVue(), journal:db.journal.slice(0,40)};
+    },
+    // Épicerie partagée (mêmes règles et messages que supabase.sql)
+    epicerie({p_jeton}){ qui(p_jeton); return epicerieVue(); },
+    epicerie_choisir_jours({p_jeton, p_jours, p_mode}){
+      const m = qui(p_jeton), E = db.epicerie, jours = p_jours || [];
+      epicerieMenage();
+      if (!['ajouter', 'retirer', 'remplacer'].includes(p_mode)) err('Mode inconnu.');
+      if (jours.length > 31) err('Trop de jours (31 au maximum).');
+      if (p_mode === 'retirer'){ E.jours = E.jours.filter(x => !jours.includes(x.jour)); return null; }
+      if (p_mode === 'remplacer') E.jours = [];
+      const t = today(), max = addDays(t, 30);
+      for (const j of jours) if (j >= t && j <= max && !E.jours.some(x => x.jour === j)) E.jours.push({jour:j, par:m.id});
+      return null;
+    },
+    epicerie_cocher({p_jeton, p_cle, p_coche}){
+      const m = qui(p_jeton), E = db.epicerie, k = String(p_cle || '').trim().toLowerCase().slice(0, 120);
+      epicerieMenage();
+      if (!k) err('Article vide.');
+      E.coches = E.coches.filter(x => x.cle !== k);
+      if (p_coche) E.coches.push({cle:k, jour:today(), par:m.id});
+      return null;
+    },
+    epicerie_ajouter({p_jeton, p_texte}){
+      const m = qui(p_jeton), E = db.epicerie, t = String(p_texte || '').trim();
+      epicerieMenage();
+      if (!t) err('Écris l\'article à ajouter.');
+      if (t.length > 120) err('L\'article est trop long (120 caractères au maximum).');
+      if (E.ajouts.length >= 200) err('La liste est pleine (200 articles ajoutés). Appuie sur « Épicerie terminée » ou efface des articles.');
+      const id = uid(); E.ajouts.push({id, texte:t, ajoute_par:m.id, coche:false, coche_par:null});
+      return id;
+    },
+    epicerie_cocher_ajout({p_jeton, p_id, p_coche}){
+      const m = qui(p_jeton);
+      epicerieMenage();
+      const a = db.epicerie.ajouts.find(x => x.id === p_id); if (!a) err('Cet article n\'est plus dans la liste.');
+      a.coche = !!p_coche; a.coche_par = p_coche ? m.id : null;
+      return null;
+    },
+    epicerie_supprimer_ajout({p_jeton, p_id}){
+      qui(p_jeton); epicerieMenage();
+      db.epicerie.ajouts = db.epicerie.ajouts.filter(x => x.id !== p_id);
+      return null;
+    },
+    epicerie_terminee({p_jeton}){
+      qui(p_jeton); const E = db.epicerie;
+      E.coches = []; E.ajouts = E.ajouts.filter(x => !x.coche); E.jours = [];
+      return null;
     },
     enregistrer_presence_maison({p_jeton, p_membre, p_jour, p_arrivee, p_depart}){
       const m = qui(p_jeton);
@@ -714,7 +812,7 @@ const Demo = (() => {
 /* =====================================================================
    État et aides
    ===================================================================== */
-const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null, modif:false, autres:{}, epiJours:null, banqueQ:''};
+const S = {sess:LS.get(CLE_SESSION), data:null, tab:LS.get('repas-onglet') || 'auj', repasJour:null, semaine:0, sheet:null, modif:false, autres:{}, banqueQ:''};
 const membre = id => S.data.membres.find(m => m.id === id);
 const prenom = id => (membre(id) || {}).prenom || id || '?';
 const moi = () => membre(S.data.moi);
@@ -1182,19 +1280,36 @@ function carteSugg(j, s, parent){
     ${ligneVotes(j, s, '', !!s.choisi)}
     ${action ? `<div class="ligne-parents"><span class="lp-t">Parents :</span>${action}</div>` : ''}</div>`;
 }
-// Page Épicerie : on choisit un ou plusieurs jours ; la liste regroupe les articles des soupers
-// DÉCIDÉS de ces jours (un même article = « ×2 », avec les jours en petit).
+// Page Épicerie (partagée par toute la famille) : les jours choisis, les cases cochées et les
+// articles ajoutés à la main viennent de la base (S.data.epicerie).
+// La liste regroupe les articles des soupers DÉCIDÉS des jours choisis (un même article = « ×2 »,
+// avec les jours en petit) et les articles ajoutés à la main. Un article coché descend dans « Réglé ».
+const EPI_VIDE = {jours:[], coches:[], ajouts:[]};
+const epi = () => (S.data && S.data.epicerie) || EPI_VIDE;
+const cleArticle = a => norm(a).replace(/\s+/g, ' ').trim().slice(0, 120);
+function ligneEpicerie(x, plusieursJours, etiquette){
+  const fait = x.coche, cible = x.id ? `data-id="${esc(x.id)}"` : `data-k="${esc(x.cle)}"`;
+  const details = [
+    x.n > 1 ? `<b>×${x.n}</b>` : '',
+    x.jours && plusieursJours ? `<span class="small">· ${x.jours.map(etiquette).join(', ')}</span>` : '',
+    x.id ? `<span class="small">· ${esc(prenom(x.ajoute_par))}</span>` : ''
+  ].filter(Boolean).join(' ');
+  const poubelle = x.id ? `<button type="button" class="btn-icone" data-a="epi-suppr" data-id="${esc(x.id)}" aria-label="Effacer ${esc(x.texte)}">${ICONE_POUBELLE}</button>` : '';
+  return `<li class="epi-art${fait ? ' fait' : ''}">
+    <button type="button" class="epi-case" data-a="epi-cocher" ${cible} data-c="${fait ? '0' : '1'}" aria-pressed="${fait}" aria-label="${fait ? 'Remettre à acheter' : 'Cocher'} : ${esc(x.texte)}">
+      <span class="epi-boite" aria-hidden="true">${fait ? '✓' : ''}</span><span class="epi-txt">${esc(x.texte)}${details ? ' ' + details : ''}</span></button>${poubelle}</li>`;
+}
 function vueEpicerie(){
-  const t = today(), jours = [...Array(14)].map((_, i) => addDays(t, i));
-  if (!S.epiJours) S.epiJours = [t];
-  const choisis = jours.filter(x => S.epiJours.includes(x));
+  const t = today(), jours = [...Array(14)].map((_, i) => addDays(t, i)), E = epi();
+  const choisis = jours.filter(x => E.jours.includes(x));
   const etiquette = x => `${cap(jourAbr(x))} ${jourNum(x)}`;
+  const coches = new Set(E.coches.map(c => c.cle));
   const groupes = new Map();
   const soupers = choisis.map(j => {
     const r = repasChoisi(j), pl = r ? platDe(r) : null;
     if (pl) for (const a of pl.articles){
-      const k = norm(a).replace(/\s+/g, ' ').trim();
-      const g = groupes.get(k) || {texte:a, n:0, jours:[]};
+      const k = cleArticle(a);
+      const g = groupes.get(k) || {cle:k, texte:a, n:0, jours:[]};
       g.n++; g.jours.push(j); groupes.set(k, g);
     }
     let detail;
@@ -1204,14 +1319,28 @@ function vueEpicerie(){
     else detail = `${esc(r.titre)} <span class="small">· ${pl.articles.length} article${pl.articles.length > 1 ? 's' : ''}</span>`;
     return `<div class="epi-souper"><b>${etiquette(j)}</b> — ${detail}</div>`;
   });
-  const liste = [...groupes.values()].sort((a, b) => a.texte.localeCompare(b.texte, 'fr'));
-  return `${enTete('Épicerie', 'Choisis un ou plusieurs jours : la liste regroupe les articles des soupers décidés.')}
+  const tous = [
+    ...[...groupes.values()].map(g => ({...g, coche:coches.has(g.cle)})),
+    ...E.ajouts.map(a => ({...a}))
+  ].sort((a, b) => a.texte.localeCompare(b.texte, 'fr', {sensitivity:'base'}));
+  const aAcheter = tous.filter(x => !x.coche), regle = tous.filter(x => x.coche);
+  const ligne = x => ligneEpicerie(x, choisis.length > 1, etiquette);
+  return `${enTete('Épicerie', 'Liste partagée : tout le monde voit les mêmes jours, les mêmes ajouts et les mêmes cases cochées.')}
     <div class="chips">${jours.map(x => `<button class="chip${choisis.includes(x) ? ' on' : ''}" data-a="epi-jour" data-j="${x}" aria-pressed="${choisis.includes(x)}">${cap(jourAbr(x))}<b>${jourNum(x)}</b><span class="dot">${repasChoisi(x) ? '✅' : ''}</span></button>`).join('')}</div>
     <div class="actions" style="margin-top:0"><button type="button" class="btn ghost sm" data-a="epi-semaine">Les 7 prochains jours</button><button type="button" class="btn ghost sm" data-a="epi-aucun">Tout désélectionner</button></div>
     <div class="card"><h3>🍽️ Soupers</h3>${choisis.length ? soupers.join('') : '<p class="muted">Touche un ou plusieurs jours ci-dessus.</p>'}</div>
-    <div class="card"><h3>🛒 À acheter (${liste.length})</h3>${liste.length
-      ? `<ul class="articles">${liste.map(g => `<li>${esc(g.texte)}${g.n > 1 ? ` <b>×${g.n}</b>` : ''}${choisis.length > 1 ? ` <span class="small">· ${g.jours.map(etiquette).join(', ')}</span>` : ''}</li>`).join('')}</ul>`
-      : `<p class="muted">${choisis.length ? 'Aucun article pour ces soupers pour l’instant.' : 'Choisis des jours pour voir la liste.'}</p>`}</div>`;
+    <div class="card">
+      <form data-f="epi-ajout" class="epi-ajout" autocomplete="off">
+        <input type="text" id="epi-texte" name="texte" maxlength="120" enterkeyhint="done" placeholder="Exemple : lait 2 L x2" aria-label="Article à ajouter à la liste">
+        <button class="btn sm">➕ Ajouter</button>
+      </form>
+    </div>
+    <div class="card"><h3>🛒 À acheter (${aAcheter.length})</h3>${aAcheter.length
+      ? `<ul class="epi-liste">${aAcheter.map(ligne).join('')}</ul>`
+      : `<p class="muted">${regle.length ? 'Tout est réglé 🎉' : choisis.length ? 'Aucun article pour ces soupers pour l’instant. Ajoute des articles ci-dessus.' : 'Choisis des jours ou ajoute des articles ci-dessus.'}</p>`}
+      ${regle.length ? `<div class="epi-regle"><h3>✔️ Réglé (${regle.length})</h3>
+        <ul class="epi-liste">${regle.map(ligne).join('')}</ul>
+        <div class="actions"><button type="button" class="btn ok" data-a="epi-terminee">✅ Épicerie terminée</button></div></div>` : ''}</div>`;
 }
 function vueFamille(){
   const m0 = moi();
@@ -1572,9 +1701,24 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'panier': ouvrir('panier', {j:d.j}); break;
-    case 'epi-jour': S.epiJours = S.epiJours.includes(d.j) ? S.epiJours.filter(x => x !== d.j) : [...S.epiJours, d.j]; render(); break;
-    case 'epi-semaine': S.epiJours = [...Array(7)].map((_, i) => addDays(today(), i)); render(); break;
-    case 'epi-aucun': S.epiJours = []; render(); break;
+    case 'epi-jour': el.disabled = true; await actEpi('epicerie_choisir_jours', {p_jours:[d.j], p_mode:epi().jours.includes(d.j) ? 'retirer' : 'ajouter'}); el.disabled = false; break;
+    case 'epi-semaine': el.disabled = true; await actEpi('epicerie_choisir_jours', {p_jours:[...Array(7)].map((_, i) => addDays(today(), i)), p_mode:'remplacer'}); el.disabled = false; break;
+    case 'epi-aucun': el.disabled = true; await actEpi('epicerie_choisir_jours', {p_jours:[], p_mode:'remplacer'}); el.disabled = false; break;
+    case 'epi-cocher':
+      el.disabled = true;
+      if (d.id) await actEpi('epicerie_cocher_ajout', {p_id:d.id, p_coche:d.c === '1'});
+      else await actEpi('epicerie_cocher', {p_cle:d.k, p_coche:d.c === '1'});
+      el.disabled = false; break;
+    case 'epi-suppr': {
+      const a = epi().ajouts.find(x => x.id === d.id); if (!a) break;
+      if (await demander({titre:'Effacer cet article ?', message:`${a.texte} sera retiré de la liste pour tout le monde.`, oui:'Effacer', danger:true, icone:ICONE_POUBELLE}))
+        await actEpi('epicerie_supprimer_ajout', {p_id:d.id}, 'Article effacé');
+      break;
+    }
+    case 'epi-terminee':
+      if (await demander({titre:'Épicerie terminée ?', message:'Pour tout le monde : les articles ajoutés à la main et cochés seront effacés (achetés), ceux pas cochés resteront pour la prochaine fois. Les articles des repas seront décochés et les jours choisis, désélectionnés.', oui:'✅ Épicerie terminée'}))
+        await actEpi('epicerie_terminee', {}, '✅ Bonne épicerie terminée!');
+      break;
     case 'del-invite': if (confirm('Retirer cet invité du souper ?')) await act('supprimer_invite', {p_id:d.id}, 'Invité retiré'); break;
     case 'goto-repas': S.repasJour = d.j; S.tab = 'repas'; fermer(); render(); scrollTo(0,0); break;
     case 'repas-jour': S.repasJour = d.j; render(); break;
@@ -1643,6 +1787,14 @@ document.addEventListener('submit', async e => {
         const r = S.sheet && S.sheet.retour, j = S.sheet && S.sheet.j;
         if (r === 'banque') ouvrir('banque', {}); else if (r === 'panier') ouvrir('panier', {j}); else fermer();
       }
+      break;
+    }
+    case 'epi-ajout': {
+      const texte = String(v.texte || '').trim();
+      if (!texte){ toast('Écris l’article à ajouter.'); break; }
+      ok = await actEpi('epicerie_ajouter', {p_texte:texte}, `🛒 ${texte} ajouté`);
+      // On vide le champ et on le garde actif : on peut enchaîner plusieurs articles.
+      if (ok){ const i = $('#epi-texte'); if (i){ i.value = ''; i.focus(); } }
       break;
     }
     case 'plats-multi': {
@@ -1728,6 +1880,19 @@ function occupe(){
 }
 setInterval(() => { if (S.sess && document.visibilityState === 'visible' && !occupe()) refresh().catch(() => {}); }, 60000);
 document.addEventListener('visibilitychange', () => { if (S.sess && document.visibilityState === 'visible' && !occupe()) refresh().catch(() => {}); });
+// Épicerie partagée : toutes les 5 secondes, quand la page Épicerie est ouverte, on relit la liste
+// et on redessine seulement si elle a changé (ce qui est tapé dans « Ajouter » est conservé).
+setInterval(async () => {
+  if (!S.sess || !S.data || S.tab !== 'epi' || document.visibilityState !== 'visible') return;
+  if (!$('#dialogue').hidden || S.sheet) return;
+  const v = epiVersion;
+  try {
+    const r = await rpc('epicerie', {p_jeton:S.sess.jeton});
+    if (v !== epiVersion || S.tab !== 'epi' || !S.data) return;
+    if (JSON.stringify(r) === JSON.stringify(epi())) return;
+    S.data.epicerie = r; renderEpi();
+  } catch(e){}
+}, 5000);
 
 /* ---------- Démarrage ---------- */
 (async function init(){

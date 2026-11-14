@@ -135,6 +135,36 @@ create table if not exists presence_maison (
   check (arrivee is null or depart is null or arrivee <= depart)
 );
 
+-- Épicerie partagée (toute la famille voit la même liste).
+-- Jours choisis en haut de la page Épicerie : les articles de leurs soupers décidés font partie de la liste.
+create table if not exists epicerie_jours (
+  jour  date primary key,
+  par   text references membres(id) on delete set null,
+  quand timestamptz not null default now()
+);
+
+-- Articles des repas cochés (dans le panier ou déjà à la maison). « cle » = l'article normalisé
+-- par l'app (minuscules, sans accents). « jour » = le jour où il a été coché : le lendemain, il
+-- n'est plus renvoyé à l'app et revient donc dans « À acheter ».
+create table if not exists epicerie_coches (
+  cle   text primary key,
+  jour  date not null,
+  par   text references membres(id) on delete set null,
+  quand timestamptz not null default now()
+);
+
+-- Articles ajoutés à la main (sans lien avec un repas). Ils restent jusqu'à ce qu'on les efface,
+-- ou jusqu'à « Épicerie terminée » s'ils sont cochés.
+create table if not exists epicerie_ajouts (
+  id         uuid primary key default gen_random_uuid(),
+  texte      text not null,
+  ajoute_par text references membres(id) on delete set null,
+  ajoute_le  timestamptz not null default now(),
+  coche      boolean not null default false,
+  coche_par  text references membres(id) on delete set null,
+  coche_le   timestamptz
+);
+
 create index if not exists presences_jour on presences (jour);
 create index if not exists invites_jour on invites (jour);
 create index if not exists suggestions_jour on suggestions (jour);
@@ -158,6 +188,9 @@ alter table journal     enable row level security;
 alter table reglages    enable row level security;
 alter table horaires_souper enable row level security;
 alter table presence_maison enable row level security;
+alter table epicerie_jours  enable row level security;
+alter table epicerie_coches enable row level security;
+alter table epicerie_ajouts enable row level security;
 
 -- ---------------------------------------------------------------------
 --  Données de départ (ne remplace rien si déjà présent)
@@ -379,7 +412,8 @@ begin
                           'arrivee', case when arrivee is null then null else to_char(arrivee, 'HH24:MI') end,
                           'depart', case when depart is null then null else to_char(depart, 'HH24:MI') end)), '[]')
                         from presence_maison where jour between p_debut and p_fin),
-    'journal',     (select coalesce(jsonb_agg(to_jsonb(x) order by x.quand desc), '[]')
+    'epicerie',    _epicerie(),
+    'journal',    (select coalesce(jsonb_agg(to_jsonb(x) order by x.quand desc), '[]')
                       from (select * from journal order by quand desc limit 40) x)
   );
 end $$;
@@ -660,6 +694,120 @@ begin
   delete from plats where id = p_id;
 end $$;
 
+-- ---------------------------------------------------------------------
+--  Épicerie partagée. Toute la famille peut tout faire.
+-- ---------------------------------------------------------------------
+-- Ce que l'app reçoit : les jours choisis (à partir d'aujourd'hui), les articles des repas
+-- cochés AUJOURD'HUI (ceux d'hier sont donc décochés d'office) et les articles ajoutés à la main.
+create or replace function _epicerie() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'jours',  (select coalesce(jsonb_agg(jour order by jour), '[]') from epicerie_jours where jour >= _aujourdhui()),
+    'coches', (select coalesce(jsonb_agg(jsonb_build_object('cle', cle, 'par', par) order by cle), '[]')
+                 from epicerie_coches where jour = _aujourdhui()),
+    'ajouts', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'texte', texte, 'ajoute_par', ajoute_par,
+                 'coche', coche, 'coche_par', coche_par) order by ajoute_le, id), '[]') from epicerie_ajouts)
+  )
+$$;
+
+-- Ménage fait à chaque écriture : jours passés et coches d'un jour passé.
+create or replace function _epicerie_menage() returns void
+language sql security definer set search_path = public as $$
+  delete from epicerie_jours  where jour < _aujourdhui();
+  delete from epicerie_coches where jour < _aujourdhui();
+$$;
+
+-- Lecture légère, appelée toutes les 5 secondes quand la page Épicerie est ouverte.
+create or replace function epicerie(p_jeton uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform _qui(p_jeton);
+  return _epicerie();
+end $$;
+
+-- Jours choisis. p_mode : 'ajouter' ou 'retirer' ces jours, ou 'remplacer' tout le choix par eux.
+create or replace function epicerie_choisir_jours(p_jeton uuid, p_jours date[], p_mode text) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  perform _epicerie_menage();
+  if p_mode not in ('ajouter', 'retirer', 'remplacer') then raise exception 'Mode inconnu.'; end if;
+  if cardinality(coalesce(p_jours, '{}')) > 31 then raise exception 'Trop de jours (31 au maximum).'; end if;
+  if p_mode = 'retirer' then
+    delete from epicerie_jours where jour = any(coalesce(p_jours, '{}'));
+    return;
+  end if;
+  if p_mode = 'remplacer' then delete from epicerie_jours where true; end if;
+  insert into epicerie_jours (jour, par)
+    select distinct d, m.id from unnest(coalesce(p_jours, '{}')) as d
+     where d between _aujourdhui() and _aujourdhui() + 30
+    on conflict (jour) do nothing;
+end $$;
+
+-- Cocher (p_coche = true) ou décocher un article d'un repas.
+create or replace function epicerie_cocher(p_jeton uuid, p_cle text, p_coche boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton); k text := left(lower(trim(coalesce(p_cle, ''))), 120);
+begin
+  perform _epicerie_menage();
+  if k = '' then raise exception 'Article vide.'; end if;
+  if p_coche then
+    insert into epicerie_coches (cle, jour, par) values (k, _aujourdhui(), m.id)
+      on conflict (cle) do update set jour = excluded.jour, par = excluded.par, quand = now();
+  else
+    delete from epicerie_coches where cle = k;
+  end if;
+end $$;
+
+-- Ajouter un article à la main. Renvoie son identifiant.
+create or replace function epicerie_ajouter(p_jeton uuid, p_texte text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton); t text := trim(coalesce(p_texte, '')); nid uuid;
+begin
+  perform _epicerie_menage();
+  if t = '' then raise exception 'Écris l''article à ajouter.'; end if;
+  if length(t) > 120 then raise exception 'L''article est trop long (120 caractères au maximum).'; end if;
+  if (select count(*) from epicerie_ajouts) >= 200 then
+    raise exception 'La liste est pleine (200 articles ajoutés). Appuie sur « Épicerie terminée » ou efface des articles.';
+  end if;
+  insert into epicerie_ajouts (texte, ajoute_par) values (t, m.id) returning id into nid;
+  return nid;
+end $$;
+
+-- Cocher ou décocher un article ajouté à la main.
+create or replace function epicerie_cocher_ajout(p_jeton uuid, p_id uuid, p_coche boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  perform _epicerie_menage();
+  update epicerie_ajouts
+     set coche = coalesce(p_coche, false),
+         coche_par = case when p_coche then m.id end,
+         coche_le  = case when p_coche then now() end
+   where id = p_id;
+  if not found then raise exception 'Cet article n''est plus dans la liste.'; end if;
+end $$;
+
+-- Effacer un article ajouté à la main (par exemple, ajouté par erreur).
+create or replace function epicerie_supprimer_ajout(p_jeton uuid, p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  perform _epicerie_menage();
+  delete from epicerie_ajouts where id = p_id;
+end $$;
+
+-- « Épicerie terminée » : les articles des repas sont décochés, les ajouts cochés (achetés) sont
+-- effacés, les ajouts pas cochés restent, et les jours choisis sont désélectionnés.
+create or replace function epicerie_terminee(p_jeton uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  delete from epicerie_coches where true;   -- « where true » : Supabase refuse un delete sans where venant de l'app
+  delete from epicerie_ajouts where coche;
+  delete from epicerie_jours where true;
+end $$;
+
 create or replace function ajouter_membre(p_jeton uuid, p_prenom text, p_emoji text, p_couleur text, p_parent boolean)
 returns text language plpgsql security definer set search_path = public as $$
 declare m membres := _qui(p_jeton); nom text; v_id text;
@@ -792,7 +940,7 @@ select cron.schedule('menage-repas', '30 3 * * 0',
 -- ---------------------------------------------------------------------
 revoke execute on function _reglage(text), _maintenant(), _aujourdhui(), _heure_fr(timestamptz), _qui(uuid),
   _notifier(text, text, text, text, int), _choisir(membres, uuid), _verifier_emoji(text), envoyer_rappels(),
-  _cle_plat(text), _plat_pour(text, text, text)
+  _cle_plat(text), _plat_pour(text, text, text), _epicerie(), _epicerie_menage()
   from public, anon, authenticated;
 revoke execute on function enregistrer_heure_souper(uuid, date, text) from public, authenticated;
 revoke execute on function enregistrer_presence_maison(uuid, text, date, text, text) from public, authenticated;
@@ -803,7 +951,10 @@ grant execute on function list_membres(), connexion(text, text), deconnexion(uui
   supprimer_invite(uuid, uuid), proposer_repas(uuid, date, text, text, boolean), choisir_repas(uuid, uuid),
   retirer_choix(uuid, date), supprimer_suggestion(uuid, uuid), voter_repas(uuid, uuid), retirer_vote(uuid, date),
   enregistrer_plat(uuid, uuid, text, text, text[]), ajouter_plats(uuid, text[]), supprimer_plat(uuid, uuid),
-  enregistrer_profil(uuid, text, text, text, text[], text[]), changer_nip(uuid, text), reinitialiser_nip(uuid, text)
+  enregistrer_profil(uuid, text, text, text, text[], text[]), changer_nip(uuid, text), reinitialiser_nip(uuid, text),
+  epicerie(uuid), epicerie_choisir_jours(uuid, date[], text), epicerie_cocher(uuid, text, boolean),
+  epicerie_ajouter(uuid, text), epicerie_cocher_ajout(uuid, uuid, boolean), epicerie_supprimer_ajout(uuid, uuid),
+  epicerie_terminee(uuid)
   to anon;
 
 -- Affiche le sujet ntfy des parents (à noter)
