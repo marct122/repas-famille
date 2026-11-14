@@ -165,6 +165,14 @@ create table if not exists epicerie_ajouts (
   coche_le   timestamptz
 );
 
+-- Ordre de la liste choisi avec les flèches ▲ ▼ (partagé, retenu d'une semaine à l'autre).
+-- « cle » = l'article normalisé (articles des repas) ou « ajout:<id> » (articles ajoutés à la main).
+-- rang 0 = le plus haut. Un article absent de cette table n'a jamais été placé : l'app le met en haut.
+create table if not exists epicerie_ordre (
+  cle  text primary key,
+  rang int not null
+);
+
 create index if not exists presences_jour on presences (jour);
 create index if not exists invites_jour on invites (jour);
 create index if not exists suggestions_jour on suggestions (jour);
@@ -191,6 +199,7 @@ alter table presence_maison enable row level security;
 alter table epicerie_jours  enable row level security;
 alter table epicerie_coches enable row level security;
 alter table epicerie_ajouts enable row level security;
+alter table epicerie_ordre  enable row level security;
 
 -- ---------------------------------------------------------------------
 --  Données de départ (ne remplace rien si déjà présent)
@@ -706,15 +715,18 @@ language sql stable security definer set search_path = public as $$
     'coches', (select coalesce(jsonb_agg(jsonb_build_object('cle', cle, 'par', par) order by cle), '[]')
                  from epicerie_coches where jour = _aujourdhui()),
     'ajouts', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'texte', texte, 'ajoute_par', ajoute_par,
-                 'coche', coche, 'coche_par', coche_par) order by ajoute_le, id), '[]') from epicerie_ajouts)
+                 'coche', coche, 'coche_par', coche_par) order by ajoute_le, id), '[]') from epicerie_ajouts),
+    'ordre',  (select coalesce(jsonb_agg(cle order by rang, cle), '[]') from epicerie_ordre)
   )
 $$;
 
--- Ménage fait à chaque écriture : jours passés et coches d'un jour passé.
+-- Ménage fait à chaque écriture : jours passés, coches d'un jour passé, et place des ajouts effacés.
 create or replace function _epicerie_menage() returns void
 language sql security definer set search_path = public as $$
   delete from epicerie_jours  where jour < _aujourdhui();
   delete from epicerie_coches where jour < _aujourdhui();
+  delete from epicerie_ordre  where cle like 'ajout:%'
+     and substr(cle, 7) not in (select id::text from epicerie_ajouts);
 $$;
 
 -- Lecture légère, appelée toutes les 5 secondes quand la page Épicerie est ouverte.
@@ -793,8 +805,8 @@ create or replace function epicerie_supprimer_ajout(p_jeton uuid, p_id uuid) ret
 language plpgsql security definer set search_path = public as $$
 declare m membres := _qui(p_jeton);
 begin
-  perform _epicerie_menage();
   delete from epicerie_ajouts where id = p_id;
+  perform _epicerie_menage();   -- après la suppression : efface aussi la place de cet article
 end $$;
 
 -- « Épicerie terminée » : les articles des repas sont décochés, les ajouts cochés (achetés) sont
@@ -806,6 +818,24 @@ begin
   delete from epicerie_coches where true;   -- « where true » : Supabase refuse un delete sans where venant de l'app
   delete from epicerie_ajouts where coche;
   delete from epicerie_jours where true;
+  perform _epicerie_menage();               -- efface aussi la place des ajouts effacés (l'ordre des autres est gardé)
+end $$;
+
+-- Ordre de la liste (flèches ▲ ▼) : l'app envoie TOUTE la liste des clés, de haut en bas.
+-- Elle remplace l'ordre précédent (le dernier qui déplace un article a raison).
+create or replace function epicerie_ordonner(p_jeton uuid, p_cles text[]) returns void
+language plpgsql security definer set search_path = public as $$
+declare m membres := _qui(p_jeton);
+begin
+  if cardinality(coalesce(p_cles, '{}')) > 2000 then raise exception 'Liste trop longue (2000 articles au maximum).'; end if;
+  delete from epicerie_ordre where true;
+  insert into epicerie_ordre (cle, rang)
+    select k, min(n)::int - 1
+      from unnest(coalesce(p_cles, '{}')) with ordinality as t(c, n),
+           lateral (select left(lower(trim(coalesce(c, ''))), 130) as k) x
+     where k <> ''
+     group by k;
+  perform _epicerie_menage();
 end $$;
 
 create or replace function ajouter_membre(p_jeton uuid, p_prenom text, p_emoji text, p_couleur text, p_parent boolean)
@@ -954,7 +984,7 @@ grant execute on function list_membres(), connexion(text, text), deconnexion(uui
   enregistrer_profil(uuid, text, text, text, text[], text[]), changer_nip(uuid, text), reinitialiser_nip(uuid, text),
   epicerie(uuid), epicerie_choisir_jours(uuid, date[], text), epicerie_cocher(uuid, text, boolean),
   epicerie_ajouter(uuid, text), epicerie_cocher_ajout(uuid, uuid, boolean), epicerie_supprimer_ajout(uuid, uuid),
-  epicerie_terminee(uuid)
+  epicerie_terminee(uuid), epicerie_ordonner(uuid, text[])
   to anon;
 
 -- Affiche le sujet ntfy des parents (à noter)
