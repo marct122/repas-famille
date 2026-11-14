@@ -1,0 +1,8 @@
+{
+  "name": "repas-famille",
+  "private": true,
+  "description": "Serveur local pour voir l'app dans le navigateur : npm run dev",
+  "scripts": {
+    "dev": "npx --yes serve@14.2.4 ."
+  }
+}
